@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loan-copilot"
+version = "0.1.0"
+description = "Workshop code: AI architect in finance · consumer loan copilot"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["common*", "module_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
