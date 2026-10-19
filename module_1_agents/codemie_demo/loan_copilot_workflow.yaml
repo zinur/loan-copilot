@@ -24,37 +24,27 @@ description: >
 mode: Sequential
 
 # ----------------------------------------------------------------------------
-# ASSISTANTS — specialists
-# System prompts беруться з CodeMie Assistant Builder (створюються окремо).
-# Тут посилаємося по id (slug) який ти задаєш при створенні assistant.
+# ASSISTANTS — посилання на вже створених assistant'ів у CodeMie.
+#
+# Схема: `id` = локальний alias усередині workflow (на нього посилаються
+# states), `assistant_id` = slug вже існуючого CodeMie Assistant (створено
+# окремо з ws_*.prompt.md). Без дублювання system_prompt / model / tools.
+#
+# Джерело: https://docs.codemie.ai/user-guide/workflows/configuration/configuration-reference/
+# «Reference existing assistant: Use assistant_id»
+#
+# Якщо CodeMie 2.59.0 не впізнає reference-форму — fallback: inline все тут
+# (див. варіант B в кінці файлу, закоментовано).
 # ----------------------------------------------------------------------------
 assistants:
-  - id: ws-intake
-    system_prompt: |
-      # ← скопіюй з ws_intake.prompt.md
-      # Короткий варіант для YAML тут не дублюємо — assistant створюється окремо.
-    model: gpt-4.1
-    temperature: 0.1
-
-  - id: ws-kyc
-    system_prompt: |
-      # ← скопіюй з ws_kyc.prompt.md
-    model: gpt-4.1
-    temperature: 0.1
-    # tools: [mock_kyc_check]   ← прикріпи у UI assistant'а
-
-  - id: ws-credit-history
-    system_prompt: |
-      # ← скопіюй з ws_credit_history.prompt.md
-    model: gpt-4.1
-    temperature: 0.1
-    # tools: [mock_credit_history]
-
-  - id: ws-underwriter
-    system_prompt: |
-      # ← скопіюй з ws_underwriter.prompt.md
-    model: gpt-4.1
-    temperature: 0.0  # політика детермінована — temp=0
+  - id: intake
+    assistant_id: ws-intake              # ← slug створеного assistant'а
+  - id: kyc
+    assistant_id: ws-kyc
+  - id: credit-history
+    assistant_id: ws-credit-history
+  - id: underwriter
+    assistant_id: ws-underwriter
 
 # ----------------------------------------------------------------------------
 # STATES — конвеєр
@@ -62,8 +52,8 @@ assistants:
 states:
 
   # ──────────── 1. INTAKE ────────────
-  - id: intake
-    assistant_id: ws-intake
+  - id: intake-state
+    assistant_id: intake                 # ← local alias з assistants: блоку
     task: |
       Зібери та валідуй заявку з повідомлення користувача.
       Якщо щось не вистачає — попроси у клієнта.
@@ -90,6 +80,7 @@ states:
       include_in_llm_history: true
 
   # ──────────── 2. GATE: intake_complete? ────────────
+  # Transform node — детермінований routing без LLM
   - id: check-intake
     custom_node_id: transform_node
     config:
@@ -104,12 +95,12 @@ states:
     next:
       condition:
         expression: "_route == 'ok'"
-        then: kyc
+        then: kyc-state
         otherwise: end-incomplete
 
   # ──────────── 3. KYC ────────────
-  - id: kyc
-    assistant_id: ws-kyc
+  - id: kyc-state
+    assistant_id: kyc
     task: |
       Виклич mock_kyc_check(tax_id="{{tax_id}}").
       Поверни JSON з kyc_passed (bool) + details + reason.
@@ -144,12 +135,12 @@ states:
     next:
       condition:
         expression: "_route == 'pass'"
-        then: credit-history
+        then: credit-history-state
         otherwise: decline-kyc
 
   # ──────────── 5. CREDIT HISTORY ────────────
-  - id: credit-history
-    assistant_id: ws-credit-history
+  - id: credit-history-state
+    assistant_id: credit-history
     task: |
       Виклич mock_credit_history(tax_id="{{tax_id}}").
       Поверни JSON з credit_score (300–850) + source + reason.
@@ -184,14 +175,14 @@ states:
     next:
       condition:
         expression: "_route == 'ok'"
-        then: underwriter
+        then: underwriter-state
         otherwise: decline-score
 
   # ──────────── 7. UNDERWRITER ────────────
   # interrupt_before: true зробить HITL gate — demonstration-friendly.
   # Якщо HITL не треба — прибери цей рядок.
-  - id: underwriter
-    assistant_id: ws-underwriter
+  - id: underwriter-state
+    assistant_id: underwriter
     # interrupt_before: true   ← розкоментуй для HITL demo (підсильна точка!)
     task: |
       Прийми рішення по заявці на основі state.
@@ -269,3 +260,39 @@ states:
 recursion_limit: 50
 max_concurrency: 1          # Loan processing — sequential by design (NBU audit)
 enable_summarization_node: false   # коротка розмова, саммарі не треба
+
+# ----------------------------------------------------------------------------
+# ВАРІАНТ B (inline, якщо reference не працює у вашій версії CodeMie)
+# ----------------------------------------------------------------------------
+# Заміни assistants: блок вище на цей (вставивши system_prompt з .prompt.md):
+#
+# assistants:
+#   - id: intake
+#     model: gpt-4.1
+#     temperature: 0.1
+#     system_prompt: |
+#       <встав вміст ws_intake.prompt.md>
+#   - id: kyc
+#     model: gpt-4.1
+#     temperature: 0.1
+#     system_prompt: |
+#       <встав вміст ws_kyc.prompt.md>
+#     tools:
+#       - name: mock_kyc_check
+#   - id: credit-history
+#     model: gpt-4.1
+#     temperature: 0.1
+#     system_prompt: |
+#       <встав вміст ws_credit_history.prompt.md>
+#     tools:
+#       - name: mock_credit_history
+#   - id: underwriter
+#     model: gpt-4.1
+#     temperature: 0.0
+#     system_prompt: |
+#       <встав вміст ws_underwriter.prompt.md>
+#
+# В цьому варіанті ws_* assistant'и в UI створювати НЕ ТРЕБА — workflow
+# сам створює їх внутрішньо. Мінус: промпти дублюються в YAML, важче
+# підтримувати та реюзити поза workflow (наприклад, в окремому chat).
+# Плюс: все в одному файлі — перенос між CodeMie тенантами одним save.

@@ -3,6 +3,41 @@
 Базовано на [docs.codemie.ai](https://docs.codemie.ai/user-guide/workflows/).
 CodeMie вміє native workflow з Visual Editor **і** YAML (вони синхронні).
 
+## Два режими assistant'ів у workflow
+
+CodeMie workflow YAML дає **2 способи** підключити LLM-агента до state:
+
+```yaml
+# Режим 1 — REFERENCE на вже створеного assistant'а (рекомендовано):
+assistants:
+  - id: intake                     # локальний alias всередині workflow
+    assistant_id: ws-intake        # slug вже існуючого CodeMie Assistant
+
+# Режим 2 — INLINE (все прямо у workflow):
+assistants:
+  - id: intake
+    model: gpt-4.1
+    system_prompt: |
+      Ти Intake-спеціаліст…
+    tools:
+      - name: mock_kyc_check
+```
+
+| | Reference (`assistant_id:`) | Inline |
+|---|---|---|
+| Де живе prompt | У окремому assistant'і (CodeMie Assistant Builder) | У YAML workflow |
+| Reuse поза workflow | ✅ Ассистент можна відкрити в chat окремо | ❌ Тільки в workflow |
+| Перенести між тенантами | Потрібно створити assistant'ів заздалегідь | ✅ Один файл — save |
+| Зміни prompt | У UI Assistant'а (версійний контроль) | git-friendly (prompt в YAML) |
+| Для воркшопу | Демонструє «два рівні» (prompt + routing) — краще | Простіше, деплой в 1 клік |
+
+**Для live-демо беремо Reference-режим** — на сцені клікаєш по assistant'у
+в UI, відкриваєш system prompt, показуєш «scope isolation» — потім переходиш
+в workflow і показуєш routing. Два рівні абстракції — сильніше враження.
+
+Якщо CodeMie 2.59.0 не підтримує `assistant_id:` reference — в нашому YAML є
+**варіант B (в кінці файлу, закоментований)**, який додає inline prompts.
+
 ## Чому Workflow, а не sub-assistants
 
 CodeMie має **два механізми** для multi-agent:
@@ -17,7 +52,10 @@ CodeMie має **два механізми** для multi-agent:
 
 ## Чеклист деплою (~20 хв)
 
-### Крок 1. Створи 4 assistants
+### Крок 1. Створи 4 assistants (для Reference-режиму)
+
+> Якщо береш **inline-варіант B** — пропускай цей крок, workflow сам
+> створить assistant'ів внутрішньо.
 
 У CodeMie → **Assistants → + Create Assistant**. Для кожного:
 
