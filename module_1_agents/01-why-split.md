@@ -22,7 +22,7 @@
 
 Воно працюватиме на демо. У production — провалиться. Чому?
 
-**По-перше, context window.** Коли ви додасте SOP на 50 сторінок,
+**По-перше, context window.** Коли ви додасте SOP (Standard Operating Procedure — внутрішній регламент банку) на 50 сторінок,
 regulatory text, 15 tools, історію клієнта — у вас не вистачить
 tokens навіть для `gpt-4o`. А ціна за token × довжину prompt'а × кожен
 turn ÷ 1000 клієнтів на день = ваш CFO плаче.

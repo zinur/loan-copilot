@@ -84,7 +84,7 @@ def bureau_agent(state: Application, user_msg: str) -> AgentResponse:
 def underwriter_agent(state: Application, user_msg: str) -> AgentResponse:
     """Policy decision за simple rule-based thresholds.
 
-    У W2 замінимо на LLM-powered reasoning з SOP grounding. Поки — чистий
+    У W2 замінимо на LLM-powered reasoning з SOP (Standard Operating Procedure) grounding. Поки — чистий
     Python, щоб було видно, що це НЕ має бути LLM виклик, якщо правила
     формалізовані.
     """

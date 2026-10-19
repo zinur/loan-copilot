@@ -6,7 +6,7 @@
 
 - **Tools з контрактами:** замінимо mock KYC/bureau на справжні
   function-calling tools з Pydantic schemas.
-- **RAG basics:** векторний індекс по SOP + regulatory docs. Underwriter
+- **RAG basics:** векторний індекс по SOP (Standard Operating Procedure — внутрішній регламент банку) + regulatory docs. Underwriter
   починає обґрунтовувати рішення посиланнями.
 - **LLM Gateway v2:** routing за складністю задачі (small vs frontier),
   fallback, cost tracking.

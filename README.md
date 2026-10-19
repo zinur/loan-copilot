@@ -67,7 +67,7 @@ loan-copilot/
 ├── common/                         <- shared code між модулями
 │   ├── schemas.py                  <- Pydantic моделі домену
 │   ├── llm_gateway.py              <- тонкий wrapper
-│   └── scenario_data/              <- mock klient, bureau, SOP
+│   └── scenario_data/              <- mock klient, bureau, SOP (Standard Operating Procedure)
 ├── module_1_agents/
 │   ├── README.md
 │   ├── 01-why-split.md
