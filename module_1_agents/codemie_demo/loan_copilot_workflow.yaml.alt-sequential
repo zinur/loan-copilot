@@ -1,3 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────
+# ALTERNATIVE DEPLOYMENT — Sequential workflow з deterministic routing.
+#
+# Для цього воркшопу МИ ВИКОРИСТОВУЄМО Option B — parent assistant
+# з `assistant_ids` (sub-assistants, LangGraph handoff supervisor).
+# Деталі: ./HOW_TO_DEPLOY.md
+#
+# Цей файл збережений як reference-варіант для deterministic routing у
+# CodeMie Sequential workflow. Корисний для regulated flows (NBU audit,
+# compliance-first) де LLM-based routing у parent-а не прийнятний.
+#
+# Щоб задеплоїти цей варіант — Workflows → + Create Workflow →
+# перемкни View у YAML → встав все нижче (окрім цього коментаря) → Save.
+# ─────────────────────────────────────────────────────────────────────
+
 # CodeMie Workflow · Loan Copilot supervisor pattern
 # ----------------------------------------------------------------------------
 # Відтворює src/orchestrator.py як CodeMie workflow.

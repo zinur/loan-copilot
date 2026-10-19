@@ -1,43 +1,45 @@
-# CodeMie live demo · Supervisor pattern
+# CodeMie live demo · Supervisor pattern (Option B — sub-assistants)
 
-Готові артефакти для live-демо під час воркшопу: 1 supervisor-agent + 4
-specialist-agent'и, що відтворюють `src/orchestrator.py` у CodeMie UI.
+Готові артефакти для live-демо під час воркшопу: 1 parent orchestrator-agent
++ 4 worker-agents, зібрані через **`assistant_ids`** (CodeMie-native
+LangGraph handoff supervisor).
 
 ## Файли
 
 | Файл | Що це |
 |------|-------|
-| `ws_orchestrator.prompt.md` | System prompt для supervisor |
+| **`HOW_TO_DEPLOY.md`** | **Основна інструкція для деплою через sub-assistants** |
+| `ws_orchestrator.prompt.md` | System prompt для parent orchestrator |
 | `ws_intake.prompt.md` | System prompt для IntakeAgent |
-| `ws_kyc.prompt.md` | System prompt для KYCAgent |
-| `ws_credit_history.prompt.md` | System prompt для CreditHistoryAgent |
+| `ws_kyc.prompt.md` | System prompt для KYCAgent (з mock lookup-table) |
+| `ws_credit_history.prompt.md` | System prompt для CreditHistoryAgent (з mock lookup-table) |
 | `ws_underwriter.prompt.md` | System prompt для UnderwriterAgent |
-| `mock_tools.yaml` | JSON schema для 2 mock tools |
-| `demo_payloads.md` | 3 payloads для демо (happy / decline / sanctions) |
+| `demo_payloads.md` | 4 payloads для демо (approve / decline-score / sanctions / injection) |
 | `demo_script.md` | 8-хвилинний сценарій живого показу |
-| **`loan_copilot_workflow.yaml`** | **CodeMie Workflow YAML — готовий до Save** |
-| **`HOW_TO_DEPLOY.md`** | **Покрокова інструкція для CodeMie 2.59.0 з troubleshooting** |
+| `mock_tools.yaml` | JSON schema для 2 mock tools (не використовуються в Option B — mocks вшиті у prompts; залишено як reference) |
+| `loan_copilot_workflow.yaml.alt-sequential` | **Alternative:** deterministic Sequential workflow (для compliance-first use cases) |
 
-## Pre-stage checklist
+## Pre-stage checklist (Option B)
 
-- [ ] Створити 5 assistant'ів у CodeMie з префіксом `ws` (щоб легко видалити)
+- [ ] Створити 4 worker assistants у CodeMie: `intake-agent`, `kycagent`,
+      `credithistoryagent`, `underwriter` (slugs точно такі)
 - [ ] Залити system prompts з `.prompt.md` файлів
-- [ ] Створити 2 mock tools за `mock_tools.yaml`, прикріпити до відповідних agent'ів
-- [ ] Прив'язати 4 specialist'и як handoff-targets до orchestrator'а
-  (або оформити як 4 tools, якщо first-class handoff не підтримується)
-- [ ] Відкрити 3 вкладки browser: orchestrator chat, kyc assistant edit view,
-  credit_history assistant edit view (для «клік-турне» на хв 1–2)
+- [ ] Кожному worker-у — **Description** (видно у handoff-tool schema)
+- [ ] Temperature: 0.1 для intake, **0.0** для kyc/credit, 0.0 для underwriter
+- [ ] Shared with Project = ON для всіх
+- [ ] Створити parent `loan-copilot-orchestrator` з `ws_orchestrator.prompt.md`
+- [ ] У parent → **Sub-assistants** multi-select → додати всі 4 workers
+- [ ] Відкрити 3 вкладки browser: parent chat, worker `kycagent` edit view,
+      parent edit view (для «клік-турне» на хв 1–2)
 - [ ] Payloads з `demo_payloads.md` → у буфер / sticky notes
-- [ ] Backup: VSCode з `python src/orchestrator.py` готовий до запуску
+- [ ] Backup: VSCode з `python -m module_1_agents.src.orchestrator` готовий до запуску
 
-## Як влаштований supervisor в CodeMie
+## Чому `assistant_ids`, а не Sequential workflow
 
-CodeMie має **native workflow engine** (Visual Editor + YAML), який ідеально
-лягає на supervisor pattern. **Orchestrator — це не LLM-assistant**, а
-сам workflow engine + Conditional nodes (детерміновані if/else).
+Коротко — CodeMie-native modern supervisor pattern. Детально:
+[`HOW_TO_DEPLOY.md`](./HOW_TO_DEPLOY.md) розділ "Чому саме `assistant_ids`".
 
-Playbook — `HOW_TO_DEPLOY.md`. YAML — `loan_copilot_workflow.yaml`.
-
-Якщо Workflow engine недоступний у вашому тенанті — фоллбеком
-використовуй **sub-assistants** (orchestrator-ассистент з LLM routing).
-Схема в `demo_script.md`, секція «Backup variant B».
+Якщо для вашого production-кейсу (NBU audit, compliance-first) потрібне
+**deterministic routing** — беріть
+[`loan_copilot_workflow.yaml.alt-sequential`](./loan_copilot_workflow.yaml.alt-sequential)
+як стартову точку.

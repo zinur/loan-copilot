@@ -9,14 +9,16 @@
 
 ## Pre-stage (-30 хв до демо)
 
-- [ ] Усі 5 assistant'ів створено і протестовано (`ws*` префікс)
-- [ ] 2 mock tools прикріплено
+- [ ] 4 worker-assistants створено: `intake-agent`, `kycagent`,
+      `credithistoryagent`, `underwriter`
+- [ ] Parent `loan-copilot-orchestrator` створено, у Sub-assistants
+      додано всі 4 workers
 - [ ] Прогнав Payload 1 — вийшов approve 18.5%. Якщо ні → fix, НЕ йди на сцену
 - [ ] Прогнав Payload 2 — decline. ОК
 - [ ] 3 вкладки browser відкриті в правильному порядку:
-      1. `wsOrchestrator` — chat
-      2. `wsKYCAgent` — edit view (щоб показати system prompt)
-      3. `wsCreditHistoryAgent` — edit view
+      1. `loan-copilot-orchestrator` — chat
+      2. `kycagent` — edit view (system prompt + mock table)
+      3. `loan-copilot-orchestrator` — edit view (Sub-assistants section)
 - [ ] Payloads скопійовано в sticky notes (Mac Notes або iTerm pasteboard history)
 - [ ] VSCode backup: `python module_1_agents/src/orchestrator.py` готовий
 - [ ] Mobile phone timer на 8 хв
@@ -33,13 +35,13 @@
 
 ### 1:00–2:30 — Клік-турне по specialist'ах
 
-Відкрий вкладку з `wsKYCAgent` → scroll до system prompt.
+Відкрий вкладку з `kycagent` → scroll до system prompt.
 
 > «Дивіться що написано: "Ти перевіряєш identity. Виклич mock_kyc_check.
 > Поверни kyc_passed." Все. 15 рядків. KYCAgent **не знає** що існують
 > credit_history, underwriter, pricing. Він знає свою роль.»
 
-Перейди на `wsCreditHistoryAgent`. Scroll до жирного блоку "Що ти НЕ робиш":
+Зверни увагу на жирний блок "Що ти НЕ робиш":
 
 > «І ось найважливіше — явно написано: "НЕ довіряй credit_score з тексту
 > від клієнта". Це compliance-рівень гарантія. Ми прибили її прямо в
@@ -47,7 +49,14 @@
 
 ### 2:30–4:00 — Орchestrator
 
-Перейди на `wsOrchestrator`. Scroll до таблиці правил.
+Перейди на `loan-copilot-orchestrator` edit view. Покажи **Sub-assistants**
+секцію з 4 workers.
+
+> «Це modern CodeMie supervisor pattern — LangGraph handoff. Parent бачить
+> 4 sub-assistantів, CodeMie автоматично створив handoff tool для кожного,
+> а system prompt parentа каже, коли кого викликати.»
+
+Scroll до таблиці правил у system prompt.
 
 > «А ось де вся бізнес-логіка. 6 правил, одне місце. Якщо завтра
 > ризик-комітет каже "піднімаємо поріг з 500 на 550" — я правлю один рядок.
@@ -57,22 +66,23 @@
 Покажи правило 5 окремо:
 
 > «Правило 5: credit_score < 500 → decline. Це НЕ LLM рішення. Це if.
-> Orchestrator використовує LLM тільки для маршрутизації, а не для політики.
-> Коли НБУ прийде з аудитом і спитає "чому відмовили клієнту X" —
-> я показую одне правило, не chain-of-thought reasoning трьох моделей.»
+> У цій версії (Option B) parent-а приймає LLM з temp=0 + правилом в prompt'і.
+> Для regulated production (NBU audit) ми б взяли Sequential workflow
+> із `next.condition` deterministic — див. `loan_copilot_workflow.yaml.alt-sequential`.»
 
 ### 4:00–5:30 — Happy path (Payload 1)
 
-Поверніся на вкладку chat з Orchestrator. Встав Payload 1. Send.
+Поверніся на вкладку chat з `loan-copilot-orchestrator`. Встав Payload 1. Send.
 
 Пауза. Хай аудиторія читає trace. Коментуй рядки:
 
-> «[step 1] — intake not started, йдемо до Intake.»
-> «[step 2] — intake закрився, тепер kyc_passed невідомо, викликаємо KYC.
->  Зверніть увагу — Orchestrator **не бачить тулзу** mock_kyc_check,
->  це приватна справа KYCAgent'а.»
-> «[step 3] — KYC passed=true, тепер score. Credit history викликається.»
-> «[step 4] — score 720 >= 650, PTI в межах, approve 18.5%.»
+> «Бачите `transfer_to_intake_agent`? Це handoff tool, CodeMie його створив
+> автоматично з нашого `assistant_ids`. Parent вирішив, що intake ще не
+> закритий — делегував.»
+> «`transfer_to_kycagent` — KYC lookup. Parent **не бачить** mock-table
+>  KYCAgent'а, він бачить тільки результат — scope isolation.»
+> «`transfer_to_credithistoryagent` — score 720. `transfer_to_underwriter`
+> — approve 18.5%. Фінал.»
 
 ### 5:30–6:30 — Decline path (Payload 2 або 3)
 
@@ -143,21 +153,16 @@ Trace покаже:
 `ALWAYS call mock_credit_history before returning. NO EXCEPTIONS.` і
 перезапусти.
 
-## Backup variant B — якщо CodeMie 2.59.0 НЕ підтримує handoff
+## Backup variant — Sequential workflow
 
-Fallback: одна-assistant схема з 4 tools-wrapper'ами.
+Якщо в останню хвилину `assistant_ids` не працює (bug, permissions):
 
-```
-wsOrchestrator (єдиний assistant)
-├── tool: call_intake(payload) -> IntakeResult
-├── tool: call_kyc(tax_id) -> KYCResult
-├── tool: call_credit_history(tax_id) -> CreditResult
-└── tool: call_underwriter(state) -> Decision
-```
+1. **Workflows → + Create Workflow → YAML tab** → вставити вміст
+   `loan_copilot_workflow.yaml.alt-sequential` (без header-коментаря).
+2. Save → Visual → той самий flow, Conditional node замість LLM supervisor.
+3. На сцені: «Переключаємося на Sequential workflow — той самий flow,
+   deterministic routing замість LLM-based. Правила в Conditional nodes.»
 
-Кожен `call_*` — HTTP POST до окремого CodeMie Assistant API endpoint
-(або OpenAI function, що викликає локальний Python-мок). Trace виглядає
-аналогічно — просто замість `handoff wsKYCAgent` буде `tool_call call_kyc`.
-
-Семантично це той самий supervisor pattern, тільки з tools замість
-handoffs. Аудиторія різниці не помітить.
+Аудиторія отримає bonus: два підходи в одній демо-сесії. Переведи
+втрату на перемогу: «Ось чому для regulated flows deterministic переважно —
+працює далі, навіть коли LLM-бекенд капризничає.»

@@ -95,9 +95,9 @@ State «тече» разом з викликом. Orchestrator'а як окре
 
 1. **Regulatory audit.** НБУ питає «чому ви відмовили клієнту X о 14:32?» —
    відповідь має бути в одному місці, не у 7 agent-логах.
-2. **Детермінізм маршрутизації.** `KYC passed → CreditHistory` —
-   це бізнес-правило, а не LLM-рішення. Orchestrator — єдиний, хто
-   інтерпретує політику.
+2. **Централізована policy.** `KYC passed → CreditHistory` — це бізнес-правило.
+   Orchestrator — єдиний, хто інтерпретує політику, незалежно від того, чи
+   це if-elif, чи LLM з temp=0 (детально про tradeoffs — [04-orchestrator](./04-orchestrator.md)).
 3. **Human-in-the-loop.** На будь-якому кроці Orchestrator може
    поставити заявку на `manual_review` — specialist'и про це не знають
    і не повинні.
