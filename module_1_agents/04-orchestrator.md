@@ -3,7 +3,7 @@
 ## Learning objective
 
 Побудуємо Orchestrator, що маршрутизує між 4 agent'ами (Intake, KYC,
-Bureau, Underwriter). Переконаєтеся, що routing — deterministic
+CreditHistory, Underwriter). Переконаєтеся, що routing — deterministic
 (state machine), не LLM.
 
 ## Prerequisites
@@ -16,7 +16,7 @@ Orchestrator — найбільша пастка у multi-agent системах
 
 **Анти-патерн 1: «LLM вирішує, кому передати».** Виглядає гарно у демо.
 У production — непередбачувана. На 10 000 заявці ви не знаєте, чи
-попадете у KYC → Bureau чи Bureau → KYC. Audit log нечитабельний.
+попадете у KYC → CreditHistory чи CreditHistory → KYC. Audit log нечитабельний.
 Compliance відмовляє у sign-off.
 
 **Анти-патерн 2: «Моноліт-switch з LLM-wrappers».** Звичайний
@@ -28,8 +28,8 @@ Compliance відмовляє у sign-off.
 
 ```
 intake_complete → KYC
-KYC passed → Bureau
-Bureau score known → Underwriter
+KYC passed → CreditHistory
+Credit score known → Underwriter
 Decision done → (Contract / Compliance / END)
 ```
 
@@ -64,8 +64,8 @@ def route(state: Application) -> str | None:
         return "KYCAgent"
     if not state.kyc_passed:
         return None  # відмова — KYC fail
-    if state.bureau_score is None:
-        return "BureauAgent"
+    if state.credit_score is None:
+        return "CreditHistoryAgent"
     if state.decision is None:
         return "UnderwriterAgent"
     return None  # final
@@ -110,8 +110,8 @@ IntakeAgent → "Збираю заявку..." (handoff after full data)
 [Orchestrator] applying: intake fields
 [Orchestrator] → KYCAgent
 KYCAgent → "KYC passed" (synthetic — викликає MOCK_KYC_RESULTS)
-[Orchestrator] → BureauAgent
-BureauAgent → "Score: 720"
+[Orchestrator] → CreditHistoryAgent
+CreditHistoryAgent → "Score: 720"
 [Orchestrator] → UnderwriterAgent
 UnderwriterAgent → "Decision: approve, APR 18.5%"
 [Orchestrator] done.

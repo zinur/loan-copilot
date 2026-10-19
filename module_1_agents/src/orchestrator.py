@@ -1,6 +1,6 @@
 """Orchestrator · supervisor pattern · deterministic routing.
 
-Містить 4 agent'и W1: Intake, KYC, Bureau, Underwriter.
+Містить 4 agent'и W1: Intake, KYC, CreditHistory, Underwriter.
 ContractAgent + Compliance додаєте у вправі 05-exercise.
 
 Запуск демо з моками:
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Callable
 
-from common.scenario_data import MOCK_BUREAU_SCORES, MOCK_KYC_RESULTS, SAMPLE_APPLICATION
+from common.scenario_data import MOCK_CREDIT_SCORES, MOCK_KYC_RESULTS, SAMPLE_APPLICATION
 from common.schemas import AgentResponse, Application
 
 
@@ -37,8 +37,8 @@ def route(state: Application) -> str | None:
         return "KYCAgent"
     if not state.kyc_passed:
         return None  # відмова — KYC fail
-    if state.bureau_score is None:
-        return "BureauAgent"
+    if state.credit_score is None:
+        return "CreditHistoryAgent"
     if state.decision is None:
         return "UnderwriterAgent"
     return None  # final
@@ -46,7 +46,7 @@ def route(state: Application) -> str | None:
 
 # ──────────────────────────── agent stubs ────────────────────────────
 #
-# У W1 ми не підключаємо реальні bureau/KYC APIs — це робота W2.
+# У W1 ми не підключаємо реальні credit history/KYC APIs — це робота W2.
 # Тут мокнуті виклики для демонстрації flow.
 
 
@@ -64,20 +64,20 @@ def kyc_agent(state: Application, user_msg: str) -> AgentResponse:
         agent="KYCAgent",
         content=msg,
         next_action="handoff" if result["passed"] else "escalate",
-        handoff_to="BureauAgent" if result["passed"] else None,
+        handoff_to="CreditHistoryAgent" if result["passed"] else None,
         data={"kyc_passed": result["passed"]},
     )
 
 
-def bureau_agent(state: Application, user_msg: str) -> AgentResponse:
-    """Bureau pull — мокнуте FICO-подібне число."""
-    score = MOCK_BUREAU_SCORES.get(state.applicant.tax_id, 600)
+def credit_history_agent(state: Application, user_msg: str) -> AgentResponse:
+    """Credit history pull — мокнуте FICO-подібне число."""
+    score = MOCK_CREDIT_SCORES.get(state.applicant.tax_id, 600)
     return AgentResponse(
-        agent="BureauAgent",
-        content=f"Bureau score отримано: {score}",
+        agent="CreditHistoryAgent",
+        content=f"Credit score отримано: {score}",
         next_action="handoff",
         handoff_to="UnderwriterAgent",
-        data={"bureau_score": score},
+        data={"credit_score": score},
     )
 
 
@@ -88,7 +88,7 @@ def underwriter_agent(state: Application, user_msg: str) -> AgentResponse:
     Python, щоб було видно, що це НЕ має бути LLM виклик, якщо правила
     формалізовані.
     """
-    score = state.bureau_score or 0
+    score = state.credit_score or 0
     income = state.applicant.monthly_income
     amount = state.request.amount
     pti = (amount / Decimal(state.request.term_months)) / income if income else Decimal("99")
@@ -122,7 +122,7 @@ def intake_agent_mock(state: Application, user_msg: str) -> AgentResponse:
 AGENT_REGISTRY: dict[str, Callable[[Application, str], AgentResponse]] = {
     "IntakeAgent": intake_agent_mock,
     "KYCAgent": kyc_agent,
-    "BureauAgent": bureau_agent,
+    "CreditHistoryAgent": credit_history_agent,
     "UnderwriterAgent": underwriter_agent,
 }
 
@@ -137,8 +137,8 @@ def _apply_changes(state: Application, data: dict) -> Application:
     update: dict = {}
     if "kyc_passed" in data:
         update["kyc_passed"] = data["kyc_passed"]
-    if "bureau_score" in data:
-        update["bureau_score"] = data["bureau_score"]
+    if "credit_score" in data:
+        update["credit_score"] = data["credit_score"]
     if "decision" in data:
         update["decision"] = data["decision"]
     if "rate_apr" in data:

@@ -44,7 +44,7 @@ class Application(BaseModel):
     applicant: Applicant
     request: LoanRequest
     kyc_passed: bool | None = None
-    bureau_score: int | None = Field(default=None, ge=300, le=850)
+    credit_score: int | None = Field(default=None, ge=300, le=850)
     decision: Literal["approve", "decline", "manual_review"] | None = None
     rate_apr: Decimal | None = None
 

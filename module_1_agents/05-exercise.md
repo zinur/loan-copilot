@@ -85,5 +85,5 @@ schema. Додайте comp'уте property у `Application`.
 ## Коли готово
 
 Переходьте до [Module 2 · Grounding](../module-2-grounding/README.md).
-Там підключимо реальні tools (bureau, KYC) та LLM Gateway замість
+Там підключимо реальні tools (credit history, KYC) та LLM Gateway замість
 прямих викликів.

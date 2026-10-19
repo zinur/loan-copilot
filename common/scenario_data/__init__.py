@@ -20,7 +20,7 @@ SAMPLE_APPLICATION = Application(
     ),
 )
 
-MOCK_BUREAU_SCORES = {
+MOCK_CREDIT_SCORES = {
     "1234567890": 720,  # Марія — good
     "9876543210": 580,  # поганий кейс
     "5555555555": 650,  # borderline

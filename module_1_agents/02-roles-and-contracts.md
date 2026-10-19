@@ -17,8 +17,8 @@ schemas формують контракти між ними.
 - *По функціях LLM:* «Summarizer agent», «Classifier agent», «Writer
   agent». Це технічний поділ, що не має сенсу для бізнесу. Compliance
   не вміє читати такі діаграми.
-- *По tools:* «BureauCallerAgent», «KYCCallerAgent». Проблема — ролі
-  плутаються з інфраструктурою. Якщо завтра зміните vendor bureau,
+- *По tools:* «CreditHistoryCallerAgent», «KYCCallerAgent». Проблема — ролі
+  плутаються з інфраструктурою. Якщо завтра зміните vendor credit-history,
   доведеться перейменовувати agent'а.
 - *По business role.* Так робить DBS, Klarna, і будь-який банк, що
   прожив > 2 роки у production. Ролі збігаються з job description у
@@ -31,7 +31,7 @@ schemas формують контракти між ними.
 |---|-------|------------------|----------------------|
 | 1 | **Intake** | Збір заявки, валідація полів | Кредитний менеджер (front) |
 | 2 | **KYC** | Identity check, sanctions, PEP | Compliance officer |
-| 3 | **Bureau** | Credit history pull та нормалізація | Credit analyst (data) |
+| 3 | **CreditHistory** | Credit history pull та нормалізація | Credit analyst (data) |
 | 4 | **Underwriter** | Policy check, PTI calc, risk tier | Underwriter |
 | 5 | **Pricing** | Visualization ставки за tier | Pricing manager |
 | 6 | **Contract** | Генерація контракту за template | Loan ops |
@@ -50,7 +50,7 @@ unit tests.
 `next_action` + `handoff_to`**. Нема прихованого shared state.
 
 Правило #3: **agent бачить тільки свій scope**. Intake не знає про
-bureau score. Underwriter не знає про e-sign. Orchestrator — єдиний,
+credit history score. Underwriter не знає про e-sign. Orchestrator — єдиний,
 хто бачить full picture.
 
 ## Code
@@ -63,7 +63,7 @@ class Application(BaseModel):
     applicant: Applicant
     request: LoanRequest
     kyc_passed: bool | None = None
-    bureau_score: int | None = Field(None, ge=300, le=850)
+    credit_score: int | None = Field(None, ge=300, le=850)
     decision: Literal["approve", "decline", "manual_review"] | None = None
     rate_apr: Decimal | None = None
 
@@ -76,7 +76,7 @@ class AgentResponse(BaseModel):
     data: dict = Field(default_factory=dict)      # структуровані зміни
 ```
 
-**Чому `kyc_passed` та `bureau_score` — у єдиному `Application`?** Це
+**Чому `kyc_passed` та `credit_score` — у єдиному `Application`?** Це
 immutable-ish shared state, яким володіє Orchestrator. Agent'и
 читають та пропонують зміни через `AgentResponse.data`, Orchestrator
 застосовує — це audit log «who changed what when».

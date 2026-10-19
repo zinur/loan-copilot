@@ -4,7 +4,7 @@
 
 ## Що ви навчитесь
 
-- **Tools з контрактами:** замінимо mock KYC/bureau на справжні
+- **Tools з контрактами:** замінимо mock KYC/credit history на справжні
   function-calling tools з Pydantic schemas.
 - **RAG basics:** векторний індекс по SOP (Standard Operating Procedure — внутрішній регламент банку) + regulatory docs. Underwriter
   починає обґрунтовувати рішення посиланнями.

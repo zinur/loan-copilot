@@ -30,7 +30,7 @@ Intake agent — найпростіший у топології, але повч
 
 **Що НЕ робить Intake:**
 
-- не викликає KYC/bureau/etc tools
+- не викликає KYC/credit history/etc tools
 - не оцінює ризик
 - не форматує контракт
 - не прощається з клієнтом («дякую за звернення» — задача Orchestrator)
@@ -139,4 +139,4 @@ Agent: ІПН має містити рівно 10 цифр...
 ## Next
 
 [04-orchestrator.md](./04-orchestrator.md) · додамо Orchestrator, який
-маршрутизує між Intake → KYC → Bureau → Underwriter.
+маршрутизує між Intake → KYC → CreditHistory → Underwriter.

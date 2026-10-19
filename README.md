@@ -5,7 +5,7 @@ Repository для 4-тижневого воркшопу **AI-архітекто�
 
 ## Що ви побудуєте
 
-Chat-first copilot для consumer loan: `intake → KYC → bureau → decision →
+Chat-first copilot для consumer loan: `intake → KYC → credit history → decision →
 contract → e-sign`. Має пройти аудит НБУ та EU AI Act, вижити нічний
 трафік, не галюцинувати ставки.
 
@@ -67,7 +67,7 @@ loan-copilot/
 ├── common/                         <- shared code між модулями
 │   ├── schemas.py                  <- Pydantic моделі домену
 │   ├── llm_gateway.py              <- тонкий wrapper
-│   └── scenario_data/              <- mock klient, bureau, SOP (Standard Operating Procedure)
+│   └── scenario_data/              <- mock klient, credit history, SOP (Standard Operating Procedure)
 ├── module_1_agents/
 │   ├── README.md
 │   ├── 01-why-split.md
@@ -87,7 +87,7 @@ loan-copilot/
   навчання.
 - **Pydantic скрізь.** I/O контракти — закон. Без них multi-agent систему
   неможливо тестувати.
-- **Моковані tools.** Не чіпаємо справжні bureau, НБУ, e-sign. Усі
+- **Моковані tools.** Не чіпаємо справжні credit history, НБУ, e-sign. Усі
   зовнішні виклики — у `common/scenario_data/`.
 - **One LLM per module.** Не вибираємо між 10 моделями на кожному step.
   LLM Gateway задає абстракцію — конкретні моделі деталі.
