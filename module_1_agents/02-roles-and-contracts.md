@@ -40,6 +40,72 @@ schemas формують контракти між ними.
 **Над ними — Orchestrator.** Не agent у строгому сенсі, а state machine
 з LLM-powered маршрутизацією (W3 поглибить).
 
+### Supervisor vs delegate pattern
+
+Коли у вас > 2 agent'ів, виникає архітектурне питання: **хто кому
+передає управління?** Є два канонічні патерни, і вибір визначає як
+ви будете дебажити інцидент о 2:00 ночі.
+
+**Supervisor (hub-and-spoke).** Один Orchestrator володіє state та
+викликає specialist'ів по одному. Кожен specialist повертає відповідь
+*Orchestrator'у*, а не наступному agent'у. Orchestrator вирішує, куди далі.
+
+```
+                        ┌─────────────────┐
+                        │   Orchestrator  │  ← володіє state
+                        │   (supervisor)  │  ← вирішує next step
+                        └──┬────┬────┬────┬──┘
+                     call│ ▲  │ ▲  │ ▲  │ ▲
+                         ▼ │  ▼ │  ▼ │  ▼ │ result
+                   ┌─────┴┐ ┌┴────┐ ┌┴───────┐ ┌┴──────────┐
+                   │Intake│ │ KYC │ │ Credit  │ │Underwriter│
+                   └──────┘ └─────┘ │ History │ └───────────┘
+                                   └─────────┘
+       specialist'и не бачать одне одного — тільки Orchestrator
+```
+
+**Delegate (peer-to-peer handoff).** Agent A сам вирішує, кому
+передати управління, та викликає Agent B напряму. B далі викликає C.
+State «тече» разом з викликом. Orchestrator'а як окремого компонента
+немає — його роль розмита по всіх agent'ах.
+
+```
+     ┌───────┐  handoff   ┌───────┐  handoff   ┌───────┐  handoff   ┌──────────┐
+     │Intake │ ─────────▶ │  KYC  │ ─────────▶ │Credit │ ─────────▶ │Underwrtr │
+     └───────┘            └───────┘            │History│            └──────────┘
+         ▲                    │                └───────┘                 │
+         │                    │ failure?            │                    │
+         └────────────────────┴─────────────────────┴────────────────────┘
+                              хто ловить? хто логує? хто retry?
+```
+
+**Trade-offs:**
+
+| Критерій | Supervisor | Delegate |
+|----------|------------|----------|
+| Audit log | Централізований, 1 місце | Розкиданий по agent'ах |
+| State ownership | Один власник (Orchestrator) | Shared / passed around |
+| Debug інциденту | `grep orchestrator.log` | Reconstruct trace з N logs |
+| Нова роль | Add node + 1 route | Edit N agent'ів (хто про неї знає) |
+| LLM calls | +1 per step (routing) | Дешевше (agent сам знає next) |
+| Loops / циклічні handoff | Неможливі by design | Легко випадково зробити A→B→A |
+| Human-in-the-loop | Natural pause point | Треба вбудовувати в кожен agent |
+
+**Для Loan Copilot беремо supervisor pattern.** Три причини:
+
+1. **Regulatory audit.** НБУ питає «чому ви відмовили клієнту X о 14:32?» —
+   відповідь має бути в одному місці, не у 7 agent-логах.
+2. **Детермінізм маршрутизації.** `KYC passed → CreditHistory` —
+   це бізнес-правило, а не LLM-рішення. Orchestrator — єдиний, хто
+   інтерпретує політику.
+3. **Human-in-the-loop.** На будь-якому кроці Orchestrator може
+   поставити заявку на `manual_review` — specialist'и про це не знають
+   і не повинні.
+
+Delegate pattern корисний для research-style агентів (deep research,
+coding assistants), де гнучкість маршрутизації важливіша за
+audit. У кредитному конвеєрі — ні.
+
 ### Контракти I/O
 
 Правило #1: **кожен agent повертає Pydantic model, не plain dict**. Це
