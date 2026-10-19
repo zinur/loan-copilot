@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────
+# ALTERNATIVE SETUP — real CodeMie tools з mock responses
+#
+# Для цього воркшопу МИ ВИКОРИСТОВУЄМО Option B з inline mock lookup
+# tables прямо у system prompts (див. ws_kyc.prompt.md,
+# ws_credit_history.prompt.md). Жодних tools attach не потрібно.
+#
+# Цей файл збережений як reference-варіант: що робити, коли мокнуті
+# lookup table'и перестають бути достатніми (production, інтеграція
+# з реальним bureau API, MCP-server). Приклад:
+#
+#   1. Створи MCP-server (або OpenAI function endpoint), що приймає tax_id
+#      і повертає mock_responses нижче.
+#   2. Прикріпи його до kycagent / credithistoryagent як Tool у CodeMie
+#      Assistant → Tools section.
+#   3. Прибери з system prompts worker-ів «Mock lookup table» секцію
+#      і додай: "Викликай mock_kyc_check(tax_id) та повертай результат".
+#
+# OpenAI-compatible function schemas нижче — готові до використання.
+# ─────────────────────────────────────────────────────────────────────
+
+tools:
+  - name: mock_kyc_check
+    description: >
+      Mock KYC check — повертає результат identity verification,
+      sanctions та PEP скринінгу для demo. Жодні зовнішні API не викликаються.
+    attach_to: [kycagent]
+    openai_function_schema:
+      name: mock_kyc_check
+      description: Perform KYC check against mock database
+      parameters:
+        type: object
+        properties:
+          tax_id:
+            type: string
+            pattern: "^[0-9]{10}$"
+            description: 10-digit Ukrainian tax ID (ІПН)
+        required: [tax_id]
+    mock_responses:
+      # tax_id → response (synced with common/scenario_data MOCK_KYC_RESULTS)
+      "1234567890": {passed: true,  sanctions: false, pep: false}
+      "9876543210": {passed: true,  sanctions: false, pep: false}
+      "5555555555": {passed: false, sanctions: true,  pep: false}
+      "_default":   {passed: true,  sanctions: false, pep: false}
+
+  - name: mock_credit_history
+    description: >
+      Mock credit history pull — повертає нормалізований скор 300–850
+      з mock бюро. Жодні зовнішні API не викликаються.
+    attach_to: [credithistoryagent]
+    openai_function_schema:
+      name: mock_credit_history
+      description: Pull credit history score from mock bureau
+      parameters:
+        type: object
+        properties:
+          tax_id:
+            type: string
+            pattern: "^[0-9]{10}$"
+        required: [tax_id]
+    mock_responses:
+      # synced with common/scenario_data MOCK_CREDIT_SCORES
+      "1234567890": {score: 720, status: ok}   # happy path → approve
+      "9876543210": {score: 580, status: ok}   # poor → decline (rule 5, < 500 threshold у production)
+      "5555555555": {score: 650, status: ok}   # borderline (не досягне якщо KYC fail)
+      "_default":   {score: 650, status: ok}
+
+# ─────────────────────────────────────────────────────────────────────
+# Як обрати: inline lookup (поточний Option B) vs real tools (цей файл)
+#
+# | Критерій                | Inline lookup (prompts) | Real tools (цей файл)      |
+# |-------------------------|-------------------------|----------------------------|
+# | Deploy effort           | 0 — тільки Description  | MCP server / HTTP endpoint |
+# | Latency per worker      | 0 extra calls           | +1 tool call per worker    |
+# | Audit log               | Prompt + LLM output     | Tool call з inputs/outputs |
+# | Prompt-injection ризик  | Низький (table в prompt)| Нижчий (tool returns truth)|
+# | Робочий для workshop    | ✅ live-демо            | Переускладнення            |
+# | Робочий для production  | ❌ (mock-data назавжди)  | ✅ підключається до bureau  |
+#
+# Для М1 workshop'у — inline. У М2 (Tools & RAG) ми це проапгрейдимо
+# до реальних tools + MCP server.

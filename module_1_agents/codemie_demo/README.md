@@ -16,7 +16,7 @@ LangGraph handoff supervisor).
 | `ws_underwriter.prompt.md` | System prompt для UnderwriterAgent |
 | `demo_payloads.md` | 4 payloads для демо (approve / decline-score / sanctions / injection) |
 | `demo_script.md` | 8-хвилинний сценарій живого показу |
-| `mock_tools.yaml` | JSON schema для 2 mock tools (не використовуються в Option B — mocks вшиті у prompts; залишено як reference) |
+| `mock_tools.yaml.alt-with-tools` | **Alternative:** OpenAI function schemas + mock responses, якщо захочеться свопнути inline lookup на реальні tools (підготовка до М2 з real bureau API) |
 | `loan_copilot_workflow.yaml.alt-sequential` | **Alternative:** deterministic Sequential workflow (для compliance-first use cases) |
 
 ## Pre-stage checklist (Option B)
