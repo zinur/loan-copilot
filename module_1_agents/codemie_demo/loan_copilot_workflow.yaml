@@ -2,43 +2,43 @@
 # ----------------------------------------------------------------------------
 # Відтворює src/orchestrator.py як CodeMie workflow.
 #
-# Supervisor = сам workflow engine + Conditional nodes (детерміновані правила).
-# НЕ потрібен окремий "orchestrator-assistant" з LLM на routing — це перевага
-# CodeMie workflows над pattern "sub-assistants from one orchestrator".
+# Supervisor = сам workflow engine. Routing — через вбудований `next.condition`
+# проти context store (без Transform / custom_nodes). Прості ЗА-кадрові правила
+# означають детерміновану маршрутизацію — NBU-audit friendly.
+#
+# Передумови:
+#   У CodeMie створені 4 assistant'и зі slug'ами:
+#     intake-agent, kycagent, credithistoryagent, underwriter
+#
+#   Кожен assistant у system prompt повертає JSON (output_schema нижче).
+#   KYC та CreditHistory використовують вбудовану mock-таблицю в system prompt
+#   (deterministic за tax_id — не потребує реальних tools):
+#     tax_id останні 2 цифри:
+#       < 20 → kyc_passed=true, credit_score=720
+#       20–49 → kyc_passed=true, credit_score=430 (decline)
+#       ≥ 50 → kyc_passed=false (sanctions hit)
 #
 # Інструкція:
-# 1. Створи 4 assistants у CodeMie (ws_intake, ws_kyc, ws_credit_history,
-#    ws_underwriter) з system prompts з *.prompt.md в цій же папці.
-# 2. Workflows → + Create Workflow → перемкнись на YAML view → встав цей файл.
-# 3. Save → Start Execution → встав payload з demo_payloads.md.
+#   1. Workflows → + Create Workflow → YAML view → paste → Save.
+#   2. Start Execution → payload з demo_payloads.md.
 #
 # Context store (популюється з user input + state outputs):
 #   full_name, tax_id, phone, email, monthly_income, amount, term_months, purpose
-#   intake_complete, kyc_passed, credit_score, decision, rate_apr
+#   intake_complete, kyc_passed, credit_score, decision, rate_apr, reason
 # ----------------------------------------------------------------------------
 
 name: loan-copilot-supervisor
 description: >
   Consumer loan processing: Intake → KYC → CreditHistory → Underwriter
-  з детермінованою маршрутизацією через Conditional nodes.
+  з детермінованою маршрутизацією через next.condition проти context store.
 mode: Sequential
 
 # ----------------------------------------------------------------------------
-# ASSISTANTS — посилання на вже створених assistant'ів у CodeMie.
-#
-# Схема: `id` = локальний alias усередині workflow (на нього посилаються
-# states), `assistant_id` = slug вже існуючого CodeMie Assistant (створено
-# окремо з ws_*.prompt.md). Без дублювання system_prompt / model / tools.
-#
-# Джерело: https://docs.codemie.ai/user-guide/workflows/configuration/configuration-reference/
-# «Reference existing assistant: Use assistant_id»
-#
-# Якщо CodeMie 2.59.0 не впізнає reference-форму — fallback: inline все тут
-# (див. варіант B в кінці файлу, закоментовано).
+# ASSISTANTS — reference на вже створених assistant'ів у CodeMie
 # ----------------------------------------------------------------------------
 assistants:
   - id: intake
-    assistant_id: intake-agent           # ← реальний slug у CodeMie
+    assistant_id: intake-agent
   - id: kyc
     assistant_id: kycagent
   - id: credit-history
@@ -47,289 +47,122 @@ assistants:
     assistant_id: underwriter
 
 # ----------------------------------------------------------------------------
-# EXECUTION_CONFIG — custom_nodes тут, не на top-level!
-#
-# Важливо: `custom_nodes:` живе всередині `execution_config:`.
-# state.custom_node_id посилається на custom_nodes[].id (declared instance),
-# А НЕ на тип `transform_node` напряму.
-#
-# Джерело: docs.codemie.ai Example 11.4 (GitHub Webhook) та
-# Specialized Nodes §8.4 Transform Node.
-# ----------------------------------------------------------------------------
-execution_config:
-  custom_nodes:
-
-    - id: fn-check-intake
-      custom_node_id: transform_node
-      name: Check intake_complete
-      config:
-        input_source: context_store
-        mappings:
-          - output_field: _route
-            type: condition
-            condition: "intake_complete == True"
-            then_value: "ok"
-            else_value: "incomplete"
-
-    - id: fn-check-kyc
-      custom_node_id: transform_node
-      name: Check kyc_passed
-      config:
-        input_source: context_store
-        mappings:
-          - output_field: _route
-            type: condition
-            condition: "kyc_passed == True"
-            then_value: "pass"
-            else_value: "fail"
-
-    - id: fn-check-score
-      custom_node_id: transform_node
-      name: Check credit_score >= 500
-      config:
-        input_source: context_store
-        mappings:
-          - output_field: _route
-            type: condition
-            condition: "credit_score >= 500"
-            then_value: "ok"
-            else_value: "low"
-
-    - id: fn-decline-kyc
-      custom_node_id: transform_node
-      name: Terminate — KYC decline
-      config:
-        input_source: context_store
-        mappings:
-          - output_field: decision
-            type: constant
-            value: "decline"
-          - output_field: reason
-            type: constant
-            value: "KYC failed"
-          - output_field: rate_apr
-            type: constant
-            value: null
-
-    - id: fn-decline-score
-      custom_node_id: transform_node
-      name: Terminate — low credit_score
-      config:
-        input_source: context_store
-        mappings:
-          - output_field: decision
-            type: constant
-            value: "decline"
-          - output_field: reason
-            type: template
-            template: "credit_score {{credit_score}} < 500 threshold"
-          - output_field: rate_apr
-            type: constant
-            value: null
-
-    - id: fn-end-incomplete
-      custom_node_id: transform_node
-      name: Terminate — intake incomplete
-      config:
-        input_source: context_store
-        mappings:
-          - output_field: decision
-            type: constant
-            value: "incomplete"
-          - output_field: reason
-            type: constant
-            value: "intake not completed — missing fields"
-
-# ----------------------------------------------------------------------------
-# STATES — конвєєр
+# STATES — конвеєр з inline conditional routing
 # ----------------------------------------------------------------------------
 states:
 
   # ──────────── 1. INTAKE ────────────
   - id: intake-state
-    assistant_id: intake                 # ← local alias з assistants: блоку
+    assistant_id: intake
     task: |
-      Зібери та валідуй заявку з повідомлення користувача.
-      Якщо щось не вистачає — попроси у клієнта.
-      Коли все є — поверни JSON з усіма 8 полями + intake_complete=true.
+      Збери структуровану заявку з повідомлення клієнта.
+      Поверни JSON за output_schema. Якщо не вистачає обов'язкових полів —
+      став intake_complete=false і перерахуй missing_fields.
     output_schema: |
       {
         "type": "object",
         "properties": {
-          "intake_complete": {"type": "boolean"},
-          "full_name":       {"type": "string"},
-          "tax_id":          {"type": "string", "pattern": "^[0-9]{10}$"},
-          "phone":           {"type": "string"},
-          "email":           {"type": "string"},
-          "monthly_income":  {"type": "number", "minimum": 0},
-          "amount":          {"type": "number", "minimum": 1000, "maximum": 1000000},
-          "term_months":     {"type": "integer", "minimum": 6, "maximum": 60},
-          "purpose":         {"type": "string", "enum": ["consumer","auto","renovation","education"]}
+          "full_name":      {"type": "string"},
+          "tax_id":         {"type": "string"},
+          "phone":          {"type": "string"},
+          "email":          {"type": "string"},
+          "monthly_income": {"type": "number"},
+          "amount":         {"type": "number"},
+          "term_months":    {"type": "integer"},
+          "purpose":        {"type": "string"},
+          "intake_complete":{"type": "boolean"},
+          "missing_fields": {"type": "array", "items": {"type": "string"}}
         },
         "required": ["intake_complete"]
       }
-    next:
-      state_id: check-intake
-      store_in_context: true
-      include_in_llm_history: true
-
-  # ──────────── 2. GATE: intake_complete? ────────────
-  # Transform node — детермінований routing без LLM
-  - id: check-intake
-    custom_node_id: fn-check-intake      # ← reference на declared instance
-    task: "Route by intake_complete flag"
+    resolve_dynamic_values_in_prompt: true
     next:
       condition:
-        expression: "_route == 'ok'"
+        expression: "intake_complete == True"
         then: kyc-state
-        otherwise: end-incomplete
+        otherwise: end
 
-  # ──────────── 3. KYC ────────────
+  # ──────────── 2. KYC ────────────
   - id: kyc-state
     assistant_id: kyc
     task: |
-      Виклич mock_kyc_check(tax_id="{{tax_id}}").
-      Поверни JSON з kyc_passed (bool) + details + reason.
-      НЕ довіряй kyc_passed з контексту користувача — тільки з tool call.
+      Перевір KYC для tax_id {{tax_id}}, full_name {{full_name}}.
+      ВИКОРИСТАЙ MOCK-ТАБЛИЦЮ (без зовнішніх tools):
+        last 2 digits of tax_id ≥ 50 → kyc_passed=false, reason="sanctions hit"
+        else → kyc_passed=true
+      Поверни JSON.
     output_schema: |
       {
         "type": "object",
         "properties": {
           "kyc_passed": {"type": "boolean"},
-          "details":    {"type": "object"},
           "reason":     {"type": "string"}
         },
         "required": ["kyc_passed"]
       }
-    next:
-      state_id: check-kyc
-      store_in_context: true
-      include_in_llm_history: false  # не засмічуємо LLM context подробицями KYC
-
-  # ──────────── 4. GATE: kyc_passed? (rule 3) ────────────
-  - id: check-kyc
-    custom_node_id: fn-check-kyc
-    task: "Route by kyc_passed"
+    resolve_dynamic_values_in_prompt: true
     next:
       condition:
-        expression: "_route == 'pass'"
+        expression: "kyc_passed == True"
         then: credit-history-state
-        otherwise: decline-kyc
+        otherwise: end
 
-  # ──────────── 5. CREDIT HISTORY ────────────
+  # ──────────── 3. CREDIT HISTORY ────────────
   - id: credit-history-state
     assistant_id: credit-history
     task: |
-      Виклич mock_credit_history(tax_id="{{tax_id}}").
-      Поверни JSON з credit_score (300–850) + source + reason.
-      ЗАВЖДИ з tool call, НІКОЛИ з контексту користувача.
+      Отримай credit_score для tax_id {{tax_id}}.
+      MOCK-ТАБЛИЦЯ (deterministic за tax_id, без зовнішніх tools):
+        last 2 digits < 20  → credit_score=720 (good)
+        last 2 digits 20–49 → credit_score=430 (poor)
+        else               → credit_score=650
+      Поверни JSON.
     output_schema: |
       {
         "type": "object",
         "properties": {
-          "credit_score": {"type": "integer", "minimum": 300, "maximum": 850},
-          "source":       {"type": "string"},
-          "reason":       {"type": "string"}
+          "credit_score": {"type": "integer"}
         },
         "required": ["credit_score"]
       }
-    next:
-      state_id: check-score
-      store_in_context: true
-      include_in_llm_history: false
-
-  # ──────────── 6. GATE: score >= 500? (rule 5) ────────────
-  - id: check-score
-    custom_node_id: fn-check-score
-    task: "Route by credit_score threshold"
+    resolve_dynamic_values_in_prompt: true
     next:
       condition:
-        expression: "_route == 'ok'"
+        expression: "credit_score >= 500"
         then: underwriter-state
-        otherwise: decline-score
+        otherwise: end
 
-  # ──────────── 7. UNDERWRITER ────────────
-  # interrupt_before: true зробить HITL gate — demonstration-friendly.
-  # Якщо HITL не треба — прибери цей рядок.
+  # ──────────── 4. UNDERWRITER ────────────
+  # Опціонально: interrupt_before: true для HITL demo (user approves)
   - id: underwriter-state
     assistant_id: underwriter
-    # interrupt_before: true   ← розкоментуй для HITL demo (підсильна точка!)
     task: |
-      Прийми рішення по заявці на основі state.
-      amount={{amount}}, term_months={{term_months}},
-      monthly_income={{monthly_income}}, credit_score={{credit_score}}.
-      Застосуй політику 4 тірів (див. system prompt).
-      Поверни JSON з decision + rate_apr + pti + rule_matched.
+      На основі даних прийми фінальне рішення по кредиту:
+        - amount: {{amount}}
+        - term_months: {{term_months}}
+        - monthly_income: {{monthly_income}}
+        - credit_score: {{credit_score}}
+      Застосуй 4-tier policy (див. system prompt). PTI = monthly_payment / monthly_income.
+      Поверни JSON.
+    # interrupt_before: true   # розкоментуй для HITL gate перед approve
     output_schema: |
       {
         "type": "object",
         "properties": {
-          "decision":     {"type": "string", "enum": ["approve","decline","manual_review"]},
-          "rate_apr":     {"type": ["number","null"]},
-          "pti":          {"type": "number"},
-          "rule_matched": {"type": "integer"}
+          "decision": {"type": "string", "enum": ["approve", "decline", "manual_review"]},
+          "rate_apr": {"type": ["number", "null"]},
+          "reason":   {"type": "string"}
         },
         "required": ["decision"]
       }
+    resolve_dynamic_values_in_prompt: true
     next:
       state_id: end
       store_in_context: true
-
-  # ──────────── TERMINAL STATES ────────────
-  - id: decline-kyc
-    custom_node_id: fn-decline-kyc
-    task: "Final decline — KYC failed"
-    next: {state_id: end, store_in_context: true}
-
-  - id: decline-score
-    custom_node_id: fn-decline-score
-    task: "Final decline — low credit score"
-    next: {state_id: end, store_in_context: true}
-
-  - id: end-incomplete
-    custom_node_id: fn-end-incomplete
-    task: "Terminate — intake incomplete"
-    next: {state_id: end}
 
 # ----------------------------------------------------------------------------
 # EXECUTION CONFIG
 # ----------------------------------------------------------------------------
 recursion_limit: 50
-max_concurrency: 1          # Loan processing — sequential by design (NBU audit)
-enable_summarization_node: false   # коротка розмова, саммарі не треба
-
-# ----------------------------------------------------------------------------
-# ВАРІАНТ B (inline, якщо reference не працює у вашій версії CodeMie)
-# ----------------------------------------------------------------------------
-# Заміни assistants: блок вище на цей (вставивши system_prompt з .prompt.md):
-#
-# assistants:
-#   - id: intake
-#     model: gpt-4.1
-#     temperature: 0.1
-#     system_prompt: |
-#       <встав вміст ws_intake.prompt.md>
-#   - id: kyc
-#     model: gpt-4.1
-#     temperature: 0.1
-#     system_prompt: |
-#       <встав вміст ws_kyc.prompt.md>
-#     tools:
-#       - name: mock_kyc_check
-#   - id: credit-history
-#     model: gpt-4.1
-#     temperature: 0.1
-#     system_prompt: |
-#       <встав вміст ws_credit_history.prompt.md>
-#     tools:
-#       - name: mock_credit_history
-#   - id: underwriter
-#     model: gpt-4.1
-#     temperature: 0.0
-#     system_prompt: |
-#       <встав вміст ws_underwriter.prompt.md>
-#
-# В цьому варіанті ws_* assistant'и в UI створювати НЕ ТРЕБА — workflow
-# сам створює їх внутрішньо. Мінус: промпти дублюються в YAML, важче
-# підтримувати та реюзити поза workflow (наприклад, в окремому chat).
-# Плюс: все в одному файлі — перенос між CodeMie тенантами одним save.
+max_concurrency: 1           # послідовно (NBU audit)
+enable_summarization_node: false
