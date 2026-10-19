@@ -15,6 +15,8 @@ specialist-agent'и, що відтворюють `src/orchestrator.py` у CodeMi
 | `mock_tools.yaml` | JSON schema для 2 mock tools |
 | `demo_payloads.md` | 3 payloads для демо (happy / decline / sanctions) |
 | `demo_script.md` | 8-хвилинний сценарій живого показу |
+| **`loan_copilot_workflow.yaml`** | **CodeMie Workflow YAML — готовий до Save** |
+| **`HOW_TO_DEPLOY.md`** | **Покрокова інструкція для CodeMie 2.59.0 з troubleshooting** |
 
 ## Pre-stage checklist
 
@@ -28,8 +30,14 @@ specialist-agent'и, що відтворюють `src/orchestrator.py` у CodeMi
 - [ ] Payloads з `demo_payloads.md` → у буфер / sticky notes
 - [ ] Backup: VSCode з `python src/orchestrator.py` готовий до запуску
 
-## Якщо CodeMie 2.59.0 НЕ має first-class multi-agent / handoff
+## Як влаштований supervisor в CodeMie
 
-Fallback: один assistant (`wsOrchestrator`) з 4 tools-wrapper'ами, що
-викликають 4 CodeMie Assistants API endpoint. Схема в `demo_script.md`,
-секція «Backup variant B».
+CodeMie має **native workflow engine** (Visual Editor + YAML), який ідеально
+лягає на supervisor pattern. **Orchestrator — це не LLM-assistant**, а
+сам workflow engine + Conditional nodes (детерміновані if/else).
+
+Playbook — `HOW_TO_DEPLOY.md`. YAML — `loan_copilot_workflow.yaml`.
+
+Якщо Workflow engine недоступний у вашому тенанті — фоллбеком
+використовуй **sub-assistants** (orchestrator-ассистент з LLM routing).
+Схема в `demo_script.md`, секція «Backup variant B».

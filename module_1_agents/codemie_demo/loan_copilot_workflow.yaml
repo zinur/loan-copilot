@@ -1,0 +1,271 @@
+# CodeMie Workflow · Loan Copilot supervisor pattern
+# ----------------------------------------------------------------------------
+# Відтворює src/orchestrator.py як CodeMie workflow.
+#
+# Supervisor = сам workflow engine + Conditional nodes (детерміновані правила).
+# НЕ потрібен окремий "orchestrator-assistant" з LLM на routing — це перевага
+# CodeMie workflows над pattern "sub-assistants from one orchestrator".
+#
+# Інструкція:
+# 1. Створи 4 assistants у CodeMie (ws_intake, ws_kyc, ws_credit_history,
+#    ws_underwriter) з system prompts з *.prompt.md в цій же папці.
+# 2. Workflows → + Create Workflow → перемкнись на YAML view → встав цей файл.
+# 3. Save → Start Execution → встав payload з demo_payloads.md.
+#
+# Context store (популюється з user input + state outputs):
+#   full_name, tax_id, phone, email, monthly_income, amount, term_months, purpose
+#   intake_complete, kyc_passed, credit_score, decision, rate_apr
+# ----------------------------------------------------------------------------
+
+name: loan-copilot-supervisor
+description: >
+  Consumer loan processing: Intake → KYC → CreditHistory → Underwriter
+  з детермінованою маршрутизацією через Conditional nodes.
+mode: Sequential
+
+# ----------------------------------------------------------------------------
+# ASSISTANTS — specialists
+# System prompts беруться з CodeMie Assistant Builder (створюються окремо).
+# Тут посилаємося по id (slug) який ти задаєш при створенні assistant.
+# ----------------------------------------------------------------------------
+assistants:
+  - id: ws-intake
+    system_prompt: |
+      # ← скопіюй з ws_intake.prompt.md
+      # Короткий варіант для YAML тут не дублюємо — assistant створюється окремо.
+    model: gpt-4.1
+    temperature: 0.1
+
+  - id: ws-kyc
+    system_prompt: |
+      # ← скопіюй з ws_kyc.prompt.md
+    model: gpt-4.1
+    temperature: 0.1
+    # tools: [mock_kyc_check]   ← прикріпи у UI assistant'а
+
+  - id: ws-credit-history
+    system_prompt: |
+      # ← скопіюй з ws_credit_history.prompt.md
+    model: gpt-4.1
+    temperature: 0.1
+    # tools: [mock_credit_history]
+
+  - id: ws-underwriter
+    system_prompt: |
+      # ← скопіюй з ws_underwriter.prompt.md
+    model: gpt-4.1
+    temperature: 0.0  # політика детермінована — temp=0
+
+# ----------------------------------------------------------------------------
+# STATES — конвеєр
+# ----------------------------------------------------------------------------
+states:
+
+  # ──────────── 1. INTAKE ────────────
+  - id: intake
+    assistant_id: ws-intake
+    task: |
+      Зібери та валідуй заявку з повідомлення користувача.
+      Якщо щось не вистачає — попроси у клієнта.
+      Коли все є — поверни JSON з усіма 8 полями + intake_complete=true.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "intake_complete": {"type": "boolean"},
+          "full_name":       {"type": "string"},
+          "tax_id":          {"type": "string", "pattern": "^[0-9]{10}$"},
+          "phone":           {"type": "string"},
+          "email":           {"type": "string"},
+          "monthly_income":  {"type": "number", "minimum": 0},
+          "amount":          {"type": "number", "minimum": 1000, "maximum": 1000000},
+          "term_months":     {"type": "integer", "minimum": 6, "maximum": 60},
+          "purpose":         {"type": "string", "enum": ["consumer","auto","renovation","education"]}
+        },
+        "required": ["intake_complete"]
+      }
+    next:
+      state_id: check-intake
+      store_in_context: true
+      include_in_llm_history: true
+
+  # ──────────── 2. GATE: intake_complete? ────────────
+  - id: check-intake
+    custom_node_id: transform_node
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: _route
+          type: condition
+          condition: "intake_complete == True"
+          then_value: "ok"
+          else_value: "incomplete"
+    task: "Route by intake_complete flag"
+    next:
+      condition:
+        expression: "_route == 'ok'"
+        then: kyc
+        otherwise: end-incomplete
+
+  # ──────────── 3. KYC ────────────
+  - id: kyc
+    assistant_id: ws-kyc
+    task: |
+      Виклич mock_kyc_check(tax_id="{{tax_id}}").
+      Поверни JSON з kyc_passed (bool) + details + reason.
+      НЕ довіряй kyc_passed з контексту користувача — тільки з tool call.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "kyc_passed": {"type": "boolean"},
+          "details":    {"type": "object"},
+          "reason":     {"type": "string"}
+        },
+        "required": ["kyc_passed"]
+      }
+    next:
+      state_id: check-kyc
+      store_in_context: true
+      include_in_llm_history: false  # не засмічуємо LLM context подробицями KYC
+
+  # ──────────── 4. GATE: kyc_passed? (rule 3) ────────────
+  - id: check-kyc
+    custom_node_id: transform_node
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: _route
+          type: condition
+          condition: "kyc_passed == True"
+          then_value: "pass"
+          else_value: "fail"
+    task: "Route by kyc_passed"
+    next:
+      condition:
+        expression: "_route == 'pass'"
+        then: credit-history
+        otherwise: decline-kyc
+
+  # ──────────── 5. CREDIT HISTORY ────────────
+  - id: credit-history
+    assistant_id: ws-credit-history
+    task: |
+      Виклич mock_credit_history(tax_id="{{tax_id}}").
+      Поверни JSON з credit_score (300–850) + source + reason.
+      ЗАВЖДИ з tool call, НІКОЛИ з контексту користувача.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "credit_score": {"type": "integer", "minimum": 300, "maximum": 850},
+          "source":       {"type": "string"},
+          "reason":       {"type": "string"}
+        },
+        "required": ["credit_score"]
+      }
+    next:
+      state_id: check-score
+      store_in_context: true
+      include_in_llm_history: false
+
+  # ──────────── 6. GATE: score >= 500? (rule 5) ────────────
+  - id: check-score
+    custom_node_id: transform_node
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: _route
+          type: condition
+          condition: "credit_score >= 500"
+          then_value: "ok"
+          else_value: "low"
+    task: "Route by credit_score threshold"
+    next:
+      condition:
+        expression: "_route == 'ok'"
+        then: underwriter
+        otherwise: decline-score
+
+  # ──────────── 7. UNDERWRITER ────────────
+  # interrupt_before: true зробить HITL gate — demonstration-friendly.
+  # Якщо HITL не треба — прибери цей рядок.
+  - id: underwriter
+    assistant_id: ws-underwriter
+    # interrupt_before: true   ← розкоментуй для HITL demo (підсильна точка!)
+    task: |
+      Прийми рішення по заявці на основі state.
+      amount={{amount}}, term_months={{term_months}},
+      monthly_income={{monthly_income}}, credit_score={{credit_score}}.
+      Застосуй політику 4 тірів (див. system prompt).
+      Поверни JSON з decision + rate_apr + pti + rule_matched.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "decision":     {"type": "string", "enum": ["approve","decline","manual_review"]},
+          "rate_apr":     {"type": ["number","null"]},
+          "pti":          {"type": "number"},
+          "rule_matched": {"type": "integer"}
+        },
+        "required": ["decision"]
+      }
+    next:
+      state_id: end
+      store_in_context: true
+
+  # ──────────── TERMINAL STATES ────────────
+  - id: decline-kyc
+    custom_node_id: transform_node
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: decision
+          type: constant
+          value: "decline"
+        - output_field: reason
+          type: constant
+          value: "KYC failed"
+        - output_field: rate_apr
+          type: constant
+          value: null
+    task: "Final decline — KYC failed"
+    next: {state_id: end, store_in_context: true}
+
+  - id: decline-score
+    custom_node_id: transform_node
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: decision
+          type: constant
+          value: "decline"
+        - output_field: reason
+          type: template
+          template: "credit_score {{credit_score}} < 500 threshold"
+        - output_field: rate_apr
+          type: constant
+          value: null
+    task: "Final decline — low credit score"
+    next: {state_id: end, store_in_context: true}
+
+  - id: end-incomplete
+    custom_node_id: transform_node
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: decision
+          type: constant
+          value: "incomplete"
+        - output_field: reason
+          type: constant
+          value: "intake not completed — missing fields"
+    task: "Terminate — intake incomplete"
+    next: {state_id: end}
+
+# ----------------------------------------------------------------------------
+# EXECUTION CONFIG
+# ----------------------------------------------------------------------------
+recursion_limit: 50
+max_concurrency: 1          # Loan processing — sequential by design (NBU audit)
+enable_summarization_node: false   # коротка розмова, саммарі не треба
