@@ -41,13 +41,46 @@
 | `underwriter` | `ws_underwriter.prompt.md` | gpt-4.1 | 0.0 |
 
 **Settings кожного:**
-- **Description** (обов'язково!) — коротка 1-реченна фраза що робить agent.
-  CodeMie показує ці description-и parent-у в handoff-tool-schemas.
-  Приклади:
-  - `intake-agent`: _"Збирає та валідує дані заявки на кредит від клієнта"_
-  - `kycagent`: _"Deterministic KYC lookup по tax_id. Повертає passed/sanctions/pep flags"_
-  - `credithistoryagent`: _"Deterministic credit-score lookup по tax_id (300–850)"_
-  - `underwriter`: _"Приймає фінальне рішення approve/decline/manual_review + APR на основі score + income"_
+- **Description** (обов'язково!) — це те, що parent-LLM бачить
+  в handoff-tool schema і на основі чого приймає рішення «викликати чи ні».
+  Якісний opis = точний routing. Скопіюй слово-в-слово:
+
+#### `intake-agent` description:
+
+```
+Збирає та валідує дані заявки на consumer loan: ПІБ, tax_id (10 цифр),
+телефон, email, місячний дохід, сума, строк, мета. Викликати на початку
+процесу, або коли поля заявки неповні/невалідні. Повертає structured JSON
+з полями заявки або просить довести дані.
+```
+
+#### `kycagent` description:
+
+```
+Deterministic KYC-lookup по tax_id: перевіряє identity, sanctions та PEP
+статус. Викликати ПІСЛЯ того як intake-agent підтвердив валідні дані
+(intake_complete=true), АЛЕ ПЕРЕД credithistoryagent / underwriter.
+Повертає {kyc_passed, sanctions, pep, reason}. temperature=0, deterministic.
+```
+
+#### `credithistoryagent` description:
+
+```
+Deterministic credit-score lookup по tax_id. Повертає нормалізований
+скор 300–850 (int). Викликати ЛИШЕ після успішного KYC (kyc_passed=true),
+але перед underwriter. НЕ викликати якщо KYC failed — скор тоді не
+потрібен. temperature=0, deterministic.
+```
+
+#### `underwriter` description:
+
+```
+Приймає фінальне кредитне рішення (approve / decline / manual_review)
+та визначає APR на основі 4-tier policy. Потребує вхідні: monthly_income,
+amount, term_months, credit_score. Викликати ОСТАННІМ, після KYC pass +
+credit_score отримано. НЕ викликати якщо credit_score < 500 — flow має
+бути відсічений правилом orchestrator'а до underwriter.
+```
 - **Shared with Project:** ON (щоб parent міг на них посилатись)
 - **Mock data** вшиті прямо у system prompt (lookup-tables в
   `ws_kyc.prompt.md` + `ws_credit_history.prompt.md`) — tools не потрібні
@@ -61,6 +94,15 @@
 - **System prompt:** `ws_orchestrator.prompt.md`
 - **Model:** gpt-4.1
 - **Temperature:** 0.1 (parent reasoning трохи гнучкіший)
+- **Description** (для каталогу Assistants / якщо дехто ще його вкладатиме як sub-assistant):
+
+  ```
+  Supervisor-оркестратор для всього consumer-loan flow: приймає заявку від
+  клієнта, координує intake → KYC → credit-history → underwriting згідно
+  6 детермінованих правил, повертає клієнту фінальне рішення +
+  APR. Не викликає KYC/credit API напряму — тільки через sub-assistants.
+  ```
+
 - **Sub-assistants (`assistant_ids`):** додай всі 4:
   - `intake-agent`
   - `kycagent`
