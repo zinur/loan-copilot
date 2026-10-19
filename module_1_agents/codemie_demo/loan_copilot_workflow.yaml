@@ -47,94 +47,98 @@ assistants:
     assistant_id: underwriter
 
 # ----------------------------------------------------------------------------
-# CUSTOM NODES — декларативні instance для Transform / routing логіки.
+# EXECUTION_CONFIG — custom_nodes тут, не на top-level!
 #
-# Важливо: state.custom_node_id посилається на custom_nodes[].id
-# (declared instance), А НЕ на тип `transform_node` напряму. Це пастка
-# з прикладу Configuration Reference: "this is a type, not a declared instance".
+# Важливо: `custom_nodes:` живе всередині `execution_config:`.
+# state.custom_node_id посилається на custom_nodes[].id (declared instance),
+# А НЕ на тип `transform_node` напряму.
+#
+# Джерело: docs.codemie.ai Example 11.4 (GitHub Webhook) та
+# Specialized Nodes §8.4 Transform Node.
 # ----------------------------------------------------------------------------
-custom_nodes:
+execution_config:
+  custom_nodes:
 
-  - id: fn-check-intake
-    custom_node_id: transform_node
-    name: Check intake_complete
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: _route
-          type: condition
-          condition: "intake_complete == True"
-          then_value: "ok"
-          else_value: "incomplete"
+    - id: fn-check-intake
+      custom_node_id: transform_node
+      name: Check intake_complete
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: _route
+            type: condition
+            condition: "intake_complete == True"
+            then_value: "ok"
+            else_value: "incomplete"
 
-  - id: fn-check-kyc
-    custom_node_id: transform_node
-    name: Check kyc_passed
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: _route
-          type: condition
-          condition: "kyc_passed == True"
-          then_value: "pass"
-          else_value: "fail"
+    - id: fn-check-kyc
+      custom_node_id: transform_node
+      name: Check kyc_passed
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: _route
+            type: condition
+            condition: "kyc_passed == True"
+            then_value: "pass"
+            else_value: "fail"
 
-  - id: fn-check-score
-    custom_node_id: transform_node
-    name: Check credit_score >= 500
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: _route
-          type: condition
-          condition: "credit_score >= 500"
-          then_value: "ok"
-          else_value: "low"
+    - id: fn-check-score
+      custom_node_id: transform_node
+      name: Check credit_score >= 500
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: _route
+            type: condition
+            condition: "credit_score >= 500"
+            then_value: "ok"
+            else_value: "low"
 
-  - id: fn-decline-kyc
-    custom_node_id: transform_node
-    name: Terminate — KYC decline
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: decision
-          type: constant
-          value: "decline"
-        - output_field: reason
-          type: constant
-          value: "KYC failed"
-        - output_field: rate_apr
-          type: constant
-          value: null
+    - id: fn-decline-kyc
+      custom_node_id: transform_node
+      name: Terminate — KYC decline
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: decision
+            type: constant
+            value: "decline"
+          - output_field: reason
+            type: constant
+            value: "KYC failed"
+          - output_field: rate_apr
+            type: constant
+            value: null
 
-  - id: fn-decline-score
-    custom_node_id: transform_node
-    name: Terminate — low credit_score
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: decision
-          type: constant
-          value: "decline"
-        - output_field: reason
-          type: template
-          template: "credit_score {{credit_score}} < 500 threshold"
-        - output_field: rate_apr
-          type: constant
-          value: null
+    - id: fn-decline-score
+      custom_node_id: transform_node
+      name: Terminate — low credit_score
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: decision
+            type: constant
+            value: "decline"
+          - output_field: reason
+            type: template
+            template: "credit_score {{credit_score}} < 500 threshold"
+          - output_field: rate_apr
+            type: constant
+            value: null
 
-  - id: fn-end-incomplete
-    custom_node_id: transform_node
-    name: Terminate — intake incomplete
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: decision
-          type: constant
-          value: "incomplete"
-        - output_field: reason
-          type: constant
-          value: "intake not completed — missing fields"
+    - id: fn-end-incomplete
+      custom_node_id: transform_node
+      name: Terminate — intake incomplete
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: decision
+            type: constant
+            value: "incomplete"
+          - output_field: reason
+            type: constant
+            value: "intake not completed — missing fields"
 
 # ----------------------------------------------------------------------------
 # STATES — конвєєр
