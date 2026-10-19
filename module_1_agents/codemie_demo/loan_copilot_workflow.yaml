@@ -2,56 +2,98 @@
 # ----------------------------------------------------------------------------
 # Відтворює src/orchestrator.py як CodeMie workflow.
 #
-# Supervisor = сам workflow engine. Routing — через вбудований `next.condition`
-# проти context store (без Transform / custom_nodes). Прості ЗА-кадрові правила
-# означають детерміновану маршрутизацію — NBU-audit friendly.
+# Supervisor = сам workflow engine. Routing — через `next.condition`
+# проти context store (детерміновано, без LLM на routing).
 #
-# Передумови:
-#   У CodeMie створені 4 assistant'и зі slug'ами:
-#     intake-agent, kycagent, credithistoryagent, underwriter
+# АРХІТЕКТУРА:
+#   intake-state         ← LLM (парсить natural language)
+#   kyc-state            ← Python transform_node (dict lookup = same as orchestrator.py)
+#   credit-history-state ← Python transform_node (dict lookup)
+#   underwriter-state    ← LLM (застосовує policy, рахує PTI, видає decision)
 #
-#   Кожен assistant у system prompt повертає JSON (output_schema нижче).
-#   KYC та CreditHistory використовують вбудовану mock-таблицю в system prompt
-#   (deterministic за tax_id — не потребує реальних tools):
-#     tax_id останні 2 цифри:
-#       < 20 → kyc_passed=true, credit_score=720
-#       20–49 → kyc_passed=true, credit_score=430 (decline)
-#       ≥ 50 → kyc_passed=false (sanctions hit)
+# Mock-дані = ТОЧНО ті самі dict'и що в common/scenario_data/__init__.py,
+# тому результати в CodeMie збігаються з Python-версією 1:1.
 #
-# Інструкція:
+# ПЕРЕДУМОВИ:
+#   У CodeMie створені assistant'и зі slug'ами:
+#     intake-agent, underwriter
+#   (kyc + credit-history тепер Python nodes — assistant'и для них НЕ потрібні)
+#
+# ІНСТРУКЦІЯ:
 #   1. Workflows → + Create Workflow → YAML view → paste → Save.
 #   2. Start Execution → payload з demo_payloads.md.
 #
-# Context store (популюється з user input + state outputs):
+# Context store:
 #   full_name, tax_id, phone, email, monthly_income, amount, term_months, purpose
-#   intake_complete, kyc_passed, credit_score, decision, rate_apr, reason
+#   intake_complete, kyc_passed, reason, credit_score, decision, rate_apr
 # ----------------------------------------------------------------------------
 
 name: loan-copilot-supervisor
 description: >
-  Consumer loan processing: Intake → KYC → CreditHistory → Underwriter
-  з детермінованою маршрутизацією через next.condition проти context store.
+  Consumer loan processing: Intake(LLM) → KYC(Python) → CreditHistory(Python) → Underwriter(LLM).
 mode: Sequential
 
 # ----------------------------------------------------------------------------
-# ASSISTANTS — reference на вже створених assistant'ів у CodeMie
+# ASSISTANTS — тільки ті, хто реально потребує LLM
 # ----------------------------------------------------------------------------
 assistants:
   - id: intake
     assistant_id: intake-agent
-  - id: kyc
-    assistant_id: kycagent
-  - id: credit-history
-    assistant_id: credithistoryagent
   - id: underwriter
     assistant_id: underwriter
+
+# ----------------------------------------------------------------------------
+# EXECUTION_CONFIG — Python transform nodes для deterministic mock lookup
+#
+# `type: script` виконує 1 Python expression у restricted namespace
+# (len, dict, str, int, float, bool, list — без imports / I/O).
+# Mapping може посилатись на попередньо обчислені fields у тому ж block'у.
+# ----------------------------------------------------------------------------
+execution_config:
+  custom_nodes:
+
+    - id: kyc_lookup
+      custom_node_id: transform_node
+      name: KYC — Python dict lookup
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: kyc_passed
+            type: script
+            script: "{'1234567890': True, '9876543210': True, '5555555555': False}.get(tax_id, True)"
+          - output_field: reason
+            type: script
+            script: "'sanctions hit' if tax_id == '5555555555' else ('invalid tax_id' if len(tax_id) != 10 else 'clean')"
+        output_schema:
+          type: object
+          properties:
+            kyc_passed: {type: boolean}
+            reason:     {type: string}
+          required: [kyc_passed]
+        on_error: fail
+
+    - id: credit_lookup
+      custom_node_id: transform_node
+      name: CreditHistory — Python dict lookup
+      config:
+        input_source: context_store
+        mappings:
+          - output_field: credit_score
+            type: script
+            script: "{'1234567890': 720, '9876543210': 580, '5555555555': 650}.get(tax_id, 650)"
+        output_schema:
+          type: object
+          properties:
+            credit_score: {type: integer}
+          required: [credit_score]
+        on_error: fail
 
 # ----------------------------------------------------------------------------
 # STATES — конвеєр з inline conditional routing
 # ----------------------------------------------------------------------------
 states:
 
-  # ──────────── 1. INTAKE ────────────
+  # ──────────── 1. INTAKE (LLM) ────────────
   - id: intake-state
     assistant_id: intake
     task: |
@@ -62,16 +104,16 @@ states:
       {
         "type": "object",
         "properties": {
-          "full_name":      {"type": "string"},
-          "tax_id":         {"type": "string"},
-          "phone":          {"type": "string"},
-          "email":          {"type": "string"},
-          "monthly_income": {"type": "number"},
-          "amount":         {"type": "number"},
-          "term_months":    {"type": "integer"},
-          "purpose":        {"type": "string"},
-          "intake_complete":{"type": "boolean"},
-          "missing_fields": {"type": "array", "items": {"type": "string"}}
+          "full_name":       {"type": "string"},
+          "tax_id":          {"type": "string"},
+          "phone":           {"type": "string"},
+          "email":           {"type": "string"},
+          "monthly_income":  {"type": "number"},
+          "amount":          {"type": "number"},
+          "term_months":     {"type": "integer"},
+          "purpose":         {"type": "string"},
+          "intake_complete": {"type": "boolean"},
+          "missing_fields":  {"type": "array", "items": {"type": "string"}}
         },
         "required": ["intake_complete"]
       }
@@ -82,57 +124,27 @@ states:
         then: kyc-state
         otherwise: end
 
-  # ──────────── 2. KYC ────────────
+  # ──────────── 2. KYC (Python) ────────────
   - id: kyc-state
-    assistant_id: kyc
-    task: |
-      Перевір KYC для tax_id {{tax_id}}, full_name {{full_name}}.
-      ВИКОРИСТАЙ MOCK-ТАБЛИЦЮ (без зовнішніх tools):
-        last 2 digits of tax_id ≥ 50 → kyc_passed=false, reason="sanctions hit"
-        else → kyc_passed=true
-      Поверни JSON.
-    output_schema: |
-      {
-        "type": "object",
-        "properties": {
-          "kyc_passed": {"type": "boolean"},
-          "reason":     {"type": "string"}
-        },
-        "required": ["kyc_passed"]
-      }
-    resolve_dynamic_values_in_prompt: true
+    custom_node_id: kyc_lookup
+    task: "Deterministic KYC lookup for {{tax_id}}"
     next:
       condition:
         expression: "kyc_passed == True"
         then: credit-history-state
         otherwise: end
 
-  # ──────────── 3. CREDIT HISTORY ────────────
+  # ──────────── 3. CREDIT HISTORY (Python) ────────────
   - id: credit-history-state
-    assistant_id: credit-history
-    task: |
-      Отримай credit_score для tax_id {{tax_id}}.
-      MOCK-ТАБЛИЦЯ (deterministic за tax_id, без зовнішніх tools):
-        last 2 digits < 20  → credit_score=720 (good)
-        last 2 digits 20–49 → credit_score=430 (poor)
-        else               → credit_score=650
-      Поверни JSON.
-    output_schema: |
-      {
-        "type": "object",
-        "properties": {
-          "credit_score": {"type": "integer"}
-        },
-        "required": ["credit_score"]
-      }
-    resolve_dynamic_values_in_prompt: true
+    custom_node_id: credit_lookup
+    task: "Deterministic credit score lookup for {{tax_id}}"
     next:
       condition:
         expression: "credit_score >= 500"
         then: underwriter-state
         otherwise: end
 
-  # ──────────── 4. UNDERWRITER ────────────
+  # ──────────── 4. UNDERWRITER (LLM) ────────────
   # Опціонально: interrupt_before: true для HITL demo (user approves)
   - id: underwriter-state
     assistant_id: underwriter
@@ -161,7 +173,7 @@ states:
       store_in_context: true
 
 # ----------------------------------------------------------------------------
-# EXECUTION CONFIG
+# WORKFLOW SETTINGS
 # ----------------------------------------------------------------------------
 recursion_limit: 50
 max_concurrency: 1           # послідовно (NBU audit)
