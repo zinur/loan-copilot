@@ -47,7 +47,97 @@ assistants:
     assistant_id: underwriter
 
 # ----------------------------------------------------------------------------
-# STATES — конвеєр
+# CUSTOM NODES — декларативні instance для Transform / routing логіки.
+#
+# Важливо: state.custom_node_id посилається на custom_nodes[].id
+# (declared instance), А НЕ на тип `transform_node` напряму. Це пастка
+# з прикладу Configuration Reference: "this is a type, not a declared instance".
+# ----------------------------------------------------------------------------
+custom_nodes:
+
+  - id: fn-check-intake
+    custom_node_id: transform_node
+    name: Check intake_complete
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: _route
+          type: condition
+          condition: "intake_complete == True"
+          then_value: "ok"
+          else_value: "incomplete"
+
+  - id: fn-check-kyc
+    custom_node_id: transform_node
+    name: Check kyc_passed
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: _route
+          type: condition
+          condition: "kyc_passed == True"
+          then_value: "pass"
+          else_value: "fail"
+
+  - id: fn-check-score
+    custom_node_id: transform_node
+    name: Check credit_score >= 500
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: _route
+          type: condition
+          condition: "credit_score >= 500"
+          then_value: "ok"
+          else_value: "low"
+
+  - id: fn-decline-kyc
+    custom_node_id: transform_node
+    name: Terminate — KYC decline
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: decision
+          type: constant
+          value: "decline"
+        - output_field: reason
+          type: constant
+          value: "KYC failed"
+        - output_field: rate_apr
+          type: constant
+          value: null
+
+  - id: fn-decline-score
+    custom_node_id: transform_node
+    name: Terminate — low credit_score
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: decision
+          type: constant
+          value: "decline"
+        - output_field: reason
+          type: template
+          template: "credit_score {{credit_score}} < 500 threshold"
+        - output_field: rate_apr
+          type: constant
+          value: null
+
+  - id: fn-end-incomplete
+    custom_node_id: transform_node
+    name: Terminate — intake incomplete
+    config:
+      input_source: context_store
+      mappings:
+        - output_field: decision
+          type: constant
+          value: "incomplete"
+        - output_field: reason
+          type: constant
+          value: "intake not completed — missing fields"
+
+# ----------------------------------------------------------------------------
+# STATES — конвєєр
 # ----------------------------------------------------------------------------
 states:
 
@@ -82,15 +172,7 @@ states:
   # ──────────── 2. GATE: intake_complete? ────────────
   # Transform node — детермінований routing без LLM
   - id: check-intake
-    custom_node_id: transform_node
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: _route
-          type: condition
-          condition: "intake_complete == True"
-          then_value: "ok"
-          else_value: "incomplete"
+    custom_node_id: fn-check-intake      # ← reference на declared instance
     task: "Route by intake_complete flag"
     next:
       condition:
@@ -122,15 +204,7 @@ states:
 
   # ──────────── 4. GATE: kyc_passed? (rule 3) ────────────
   - id: check-kyc
-    custom_node_id: transform_node
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: _route
-          type: condition
-          condition: "kyc_passed == True"
-          then_value: "pass"
-          else_value: "fail"
+    custom_node_id: fn-check-kyc
     task: "Route by kyc_passed"
     next:
       condition:
@@ -162,15 +236,7 @@ states:
 
   # ──────────── 6. GATE: score >= 500? (rule 5) ────────────
   - id: check-score
-    custom_node_id: transform_node
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: _route
-          type: condition
-          condition: "credit_score >= 500"
-          then_value: "ok"
-          else_value: "low"
+    custom_node_id: fn-check-score
     task: "Route by credit_score threshold"
     next:
       condition:
@@ -207,50 +273,17 @@ states:
 
   # ──────────── TERMINAL STATES ────────────
   - id: decline-kyc
-    custom_node_id: transform_node
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: decision
-          type: constant
-          value: "decline"
-        - output_field: reason
-          type: constant
-          value: "KYC failed"
-        - output_field: rate_apr
-          type: constant
-          value: null
+    custom_node_id: fn-decline-kyc
     task: "Final decline — KYC failed"
     next: {state_id: end, store_in_context: true}
 
   - id: decline-score
-    custom_node_id: transform_node
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: decision
-          type: constant
-          value: "decline"
-        - output_field: reason
-          type: template
-          template: "credit_score {{credit_score}} < 500 threshold"
-        - output_field: rate_apr
-          type: constant
-          value: null
+    custom_node_id: fn-decline-score
     task: "Final decline — low credit score"
     next: {state_id: end, store_in_context: true}
 
   - id: end-incomplete
-    custom_node_id: transform_node
-    config:
-      input_source: context_store
-      mappings:
-        - output_field: decision
-          type: constant
-          value: "incomplete"
-        - output_field: reason
-          type: constant
-          value: "intake not completed — missing fields"
+    custom_node_id: fn-end-incomplete
     task: "Terminate — intake incomplete"
     next: {state_id: end}
 
