@@ -38,13 +38,13 @@ mode: Sequential
 # ----------------------------------------------------------------------------
 assistants:
   - id: intake
-    assistant_id: ws-intake              # ← slug створеного assistant'а
+    assistant_id: intake-agent           # ← реальний slug у CodeMie
   - id: kyc
-    assistant_id: ws-kyc
+    assistant_id: kycagent
   - id: credit-history
-    assistant_id: ws-credit-history
+    assistant_id: credithistoryagent
   - id: underwriter
-    assistant_id: ws-underwriter
+    assistant_id: underwriter
 
 # ----------------------------------------------------------------------------
 # STATES — конвеєр
