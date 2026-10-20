@@ -10,7 +10,7 @@
 
 ## Матеріали та практичні кроки (Steps)
 
-1. **[02-rag-tuning-lab.md](./02-rag-tuning-lab.md)** · **Практичний воркшоп (40–50 хв):** тюнінг розміру чанків, дуель Dense vs BM25 vs Hybrid RRF, Cross-Encoder Reranker та Citation Gate.
+1. **[02-rag-tuning-lab.md](./02-rag-tuning-lab.md)** · **Лабораторний практикум:** тюнінг розміру чанків, дуель Dense vs BM25 vs Hybrid RRF, Cross-Encoder Reranker та Citation Gate.
 2. **[data/policies/](./data/policies/)** · Реалістичні банківські регламенти:
    - [`POL-LOAN-01.md`](./data/policies/POL-LOAN-01.md) — Політика кредитування та винятки для ФОП (§4.2.1).
    - [`SOP-CREDIT-02.md`](./data/policies/SOP-CREDIT-02.md) — Методика розрахунку ануїтету, PTI/DTI та 4-рівнева матриця рішень.
@@ -189,7 +189,7 @@ Long Context    Яка структура документу?
 
 ---
 
-## 8. Практичний стенд W2: RAG Optimization Ladder Lab (40–50 хв)
+## 8. Практичний стенд W2: RAG Optimization Ladder Lab
 
 У межах модуля розроблено повноцінний автономний лабораторний комплекс, який демонструє еволюцію RAG на реалістичних банківських регламентах.
 
@@ -209,10 +209,10 @@ module_2_grounding/
 │   └── rag_lab.py             (Інтерактивний CLI-стенд з кольоровими таблицями rich)
 ├── tests/
 │   └── test_rag_lab.py        (5 автоматичних тестів, що покривають усі компоненти)
-└── [02-rag-tuning-lab.md](./02-rag-tuning-lab.md)       (Методичний посібник для викладача на 40–50 хв)
+└── [02-rag-tuning-lab.md](./02-rag-tuning-lab.md)       (Лабораторний практикум із RAG-інженерії)
 ```
 
-👉 **Покроковий сценарій проведення лаби з питаннями та дебрифінгом:** перейдіть до [02 · RAG Optimization Ladder Lab](./02-rag-tuning-lab.md).
+👉 **Покроковий сценарій проведення досліджень:** перейдіть до [02 · RAG Optimization Ladder Lab](./02-rag-tuning-lab.md).
 
 ### Запуск стенду в терміналі:
 ```bash
