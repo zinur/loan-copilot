@@ -14,7 +14,7 @@ contract → e-sign`. Має пройти аудит НБУ та EU AI Act, ви
 | Модуль | Тема | Коли | Статус |
 |--------|------|------|--------|
 | [module_1_agents](./module_1_agents/README.md) | Agent topology · orchestrator + 7 specialists | Webinar 1 | ✓ |
-| [module_2_grounding](./module_2_grounding/README.md) | RAG · tools · LLM gateway | Webinar 2 | stub |
+| [module_2_grounding](./module_2_grounding/README.md) | RAG · tools · LLM gateway | Webinar 2 | ✓ |
 | [module_3_workflows](./module_3_workflows/README.md) | Durable workflows · HITL · pause/resume | Webinar 3 | stub |
 | [module_4_production](./module_4_production/README.md) | Eval · observability · cost · security | Webinar 4 | stub |
 
@@ -76,7 +76,12 @@ loan-copilot/
 │   ├── 04-orchestrator.md
 │   ├── 05-exercise.md
 │   └── src/
-├── module_2_grounding/README.md    <- stub
+├── module_2_grounding/
+│   ├── README.md
+│   ├── 02-rag-tuning-lab.md
+│   ├── data/policies/
+│   ├── src/
+│   └── tests/
 ├── module_3_workflows/README.md    <- stub
 └── module_4_production/README.md   <- stub
 ```
