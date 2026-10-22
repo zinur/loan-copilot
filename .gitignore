@@ -8,3 +8,4 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.jsonl
+!module_4_production/data/*.jsonl
