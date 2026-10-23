@@ -79,16 +79,20 @@ loan-copilot/
 ├── module_2_grounding/
 │   ├── README.md
 │   ├── 02-rag-tuning-lab.md
+│   ├── 03-exercise.md              <- лаба W2 (Consent Gate + RAG)
 │   ├── data/policies/
 │   ├── src/
 │   └── tests/
 ├── module_3_workflows/
 │   ├── README.md
+│   ├── 02-exercise.md              <- лаба W3 (Durable FSM + HITL + Saga)
 │   ├── src/
 │   └── tests/
 └── module_4_production/
     ├── README.md
+    ├── 02-exercise.md              <- лаба W4 (RAGAS Eval + FinOps + Langfuse)
     ├── data/
+    ├── docker/
     ├── src/
     └── tests/
 ```

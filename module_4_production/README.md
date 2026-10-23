@@ -8,12 +8,13 @@
 
 ## Матеріали та практичні кроки (Steps)
 
-1. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** збалансована вибірка за категоріями (Eligibility, Risk, KYC, Adversarial attacks).
-2. **[src/eval_metrics.py](./src/eval_metrics.py)** · **Математичні метрики RAGAS & Guardrails:** алгоритми розрахунку Faithfulness, Answer Relevance, Context Recall, верифікація карток за алгоритмом Луна та виявлення спроб Prompt Injection.
-3. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат:** розрахунок собівартості обробки заявки ($2.56/case) та проєкція витрат на обсязі 10 000 заявок на добу з урахуванням Prompt Caching.
-4. **[src/run_eval.py](./src/run_eval.py)** · **Головний runner оцінювання для CI/CD:** інтерактивний запуск пакетного тестування з красивими Rich-таблицями та перевіркою порогів блокування білда (Quality Gates).
-5. **[tests/test_eval_pipeline.py](./tests/test_eval_pipeline.py)** · **Автоматичні юніт-тести:** 5 тестів для перевірки метрик, виявлення PII та FinOps-розрахунків.
-6. **[Інтерактивна презентація (deck.html)](../deck.html)** · Слайди 33–41 із детальним архітектурним розбором інженерних концептів.
+1. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** пакетна валідація 20 кейсів Golden Set, налаштування Quality Gate у CI/CD, FinOps-модель та Langfuse-трейсинг.
+2. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** збалансована вибірка за категоріями (Eligibility, Risk, KYC, Adversarial attacks).
+3. **[src/eval_metrics.py](./src/eval_metrics.py)** · **Математичні метрики RAGAS & Guardrails:** алгоритми розрахунку Faithfulness, Answer Relevance, Context Recall, верифікація карток за алгоритмом Луна та виявлення спроб Prompt Injection.
+4. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат:** розрахунок собівартості обробки заявки ($2.56/case) та проєкція витрат на обсязі 10 000 заявок на добу з урахуванням Prompt Caching.
+5. **[src/run_eval.py](./src/run_eval.py)** · **Головний runner оцінювання для CI/CD:** інтерактивний запуск пакетного тестування з красивими Rich-таблицями та перевіркою порогів блокування білда (Quality Gates).
+6. **[tests/test_eval_pipeline.py](./tests/test_eval_pipeline.py)** · **Автоматичні юніт-тести:** 6 тестів для перевірки метрик, виявлення PII, персистенції ранів та FinOps-розрахунків.
+7. **[Інтерактивна презентація (deck.html)](../deck.html)** · Слайди 33–41 із детальним архітектурним розбором інженерних концептів.
 
 ---
 

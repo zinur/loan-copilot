@@ -8,15 +8,16 @@
 
 ## Матеріали та практичні кроки (Steps)
 
-1. **[02-rag-tuning-lab.md](./02-rag-tuning-lab.md)** · **Лабораторний практикум із RAG:** тюнінг розміру чанків, дуель Dense vs BM25 vs Hybrid RRF, Cross-Encoder Reranker та Citation Gate.
-2. **[src/orchestrator_v2.py](./src/orchestrator_v2.py)** · **End-to-End Grounded Orchestrator:** повний конвеєр W2 (Intake → Eligibility RAG → KYC tool → CreditHistory Consent Gate → Python Math Underwriter → Audit log).
-3. **[src/tool_contracts.py](./src/tool_contracts.py)** · **Банківські контракти інструментів:** In-code RBAC, Consent Gate для PII, точний розрахунок ануїтету та незмінний `audit.jsonl`.
-4. **[src/eligibility_agent.py](./src/eligibility_agent.py)** · **RAG-агент прийнятності:** перевірка критеріїв позичальника за нормами `POL-LOAN-01` та `REG-NBU-351` з обов'язковими цитатами.
-5. **[data/policies/](./data/policies/)** · Реалістичні банківські регламенти:
+1. **[03-exercise.md](./03-exercise.md)** · **Практичне завдання W2:** реалізація Consent Gate, валідація цитат для аудиту НБУ та наскрізний прогін 4 бізнес-сценаріїв.
+2. **[02-rag-tuning-lab.md](./02-rag-tuning-lab.md)** · **Лабораторний практикум із RAG:** тюнінг розміру чанків, дуель Dense vs BM25 vs Hybrid RRF, Cross-Encoder Reranker та Citation Gate.
+3. **[src/orchestrator_v2.py](./src/orchestrator_v2.py)** · **End-to-End Grounded Orchestrator:** повний конвеєр W2 (Intake → Eligibility RAG → KYC tool → CreditHistory Consent Gate → Python Math Underwriter → Audit log).
+4. **[src/tool_contracts.py](./src/tool_contracts.py)** · **Банківські контракти інструментів:** In-code RBAC, Consent Gate для PII, точний розрахунок ануїтету та незмінний `audit.jsonl`.
+5. **[src/eligibility_agent.py](./src/eligibility_agent.py)** · **RAG-агент прийнятності:** перевірка критеріїв позичальника за нормами `POL-LOAN-01` та `REG-NBU-351` з обов'язковими цитатами.
+6. **[data/policies/](./data/policies/)** · Реалістичні банківські регламенти:
    - [`POL-LOAN-01.md`](./data/policies/POL-LOAN-01.md) — Політика кредитування та винятки для ФОП (§4.2.1).
    - [`SOP-CREDIT-02.md`](./data/policies/SOP-CREDIT-02.md) — Методика розрахунку ануїтету, PTI/DTI та 4-рівнева матриця рішень.
    - [`REG-NBU-351.md`](./data/policies/REG-NBU-351.md) — Постанова НБУ № 351 (критерії дефолту, оцінка ризиків, заборона валюти).
-6. **[tests/](./tests/)** · Автоматичні тести (pytest):
+7. **[tests/](./tests/)** · Автоматичні тести (pytest):
    - [`test_end_to_end.py`](./tests/test_end_to_end.py) — перевірка повного конвеєра, блокування Consent Gate, RBAC-захисту та точності математики.
    - [`test_rag_lab.py`](./tests/test_rag_lab.py) — верифікація компонентів чанкінгу, BM25, RRF та реранкера.
 
