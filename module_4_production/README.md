@@ -8,13 +8,14 @@
 
 ## Матеріали та практичні кроки (Steps)
 
-1. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** пакетна валідація 20 кейсів Golden Set, налаштування Quality Gate у CI/CD, FinOps-модель та Langfuse-трейсинг.
-2. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** збалансована вибірка за категоріями (Eligibility, Risk, KYC, Adversarial attacks).
-3. **[src/eval_metrics.py](./src/eval_metrics.py)** · **Математичні метрики RAGAS & Guardrails:** алгоритми розрахунку Faithfulness, Answer Relevance, Context Recall, верифікація карток за алгоритмом Луна та виявлення спроб Prompt Injection.
-4. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат:** розрахунок собівартості обробки заявки ($2.56/case) та проєкція витрат на обсязі 10 000 заявок на добу з урахуванням Prompt Caching.
-5. **[src/run_eval.py](./src/run_eval.py)** · **Головний runner оцінювання для CI/CD:** інтерактивний запуск пакетного тестування з красивими Rich-таблицями та перевіркою порогів блокування білда (Quality Gates).
-6. **[tests/test_eval_pipeline.py](./tests/test_eval_pipeline.py)** · **Автоматичні юніт-тести:** 6 тестів для перевірки метрик, виявлення PII, персистенції ранів та FinOps-розрахунків.
-7. **[Інтерактивна презентація (deck.html)](../deck.html)** · Слайди 33–41 із детальним архітектурним розбором інженерних концептів.
+1. **[01-eval-and-observability-lab.md](./01-eval-and-observability-lab.md)** · **Лабораторний практикум із Eval & Observability:** покроковий розбір 4 експериментів (батч-оцінка 20 кейсів, викриття Verbosity Bias судді, детекція витоку карток за формулою Луна, FinOps та Langfuse).
+2. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** пакетна валідація 20 кейсів Golden Set, налаштування Quality Gate у CI/CD, FinOps-модель та Langfuse-трейсинг.
+3. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** збалансована вибірка за категоріями (Eligibility, Risk, KYC, Adversarial attacks).
+4. **[src/eval_metrics.py](./src/eval_metrics.py)** · **Математичні метрики RAGAS & Guardrails:** алгоритми розрахунку Faithfulness, Answer Relevance, Context Recall, верифікація карток за алгоритмом Луна та виявлення спроб Prompt Injection.
+5. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат:** розрахунок собівартості обробки заявки ($2.56/case) та проєкція витрат на обсязі 10 000 заявок на добу з урахуванням Prompt Caching.
+6. **[src/run_eval.py](./src/run_eval.py)** · **Головний runner оцінювання для CI/CD:** інтерактивний запуск пакетного тестування з красивими Rich-таблицями та перевіркою порогів блокування білда (Quality Gates).
+7. **[tests/test_eval_pipeline.py](./tests/test_eval_pipeline.py)** · **Автоматичні юніт-тести:** 6 тестів для перевірки метрик, виявлення PII, персистенції ранів та FinOps-розрахунків.
+8. **[Інтерактивна презентація (deck.html)](../deck.html)** · Слайди 33–41 із детальним архітектурним розбором інженерних концептів.
 
 ---
 

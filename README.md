@@ -85,12 +85,14 @@ loan-copilot/
 │   └── tests/
 ├── module_3_workflows/
 │   ├── README.md
-│   ├── 02-exercise.md              <- лаба W3 (Durable FSM + HITL + Saga)
+│   ├── 01-durable-workflows-lab.md <- лаба W3 (LangGraph FSM + Saga)
+│   ├── 02-exercise.md              <- завдання W3
 │   ├── src/
 │   └── tests/
 └── module_4_production/
     ├── README.md
-    ├── 02-exercise.md              <- лаба W4 (RAGAS Eval + FinOps + Langfuse)
+    ├── 01-eval-and-observability-lab.md <- лаба W4 (RAGAS + Langfuse)
+    ├── 02-exercise.md              <- завдання W4
     ├── data/
     ├── docker/
     ├── src/
