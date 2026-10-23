@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: langfuse-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: langfuse
+    ports:
+      - "5433:5432"
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  langfuse-server:
+    image: langfuse/langfuse:3
+    container_name: langfuse-server
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgrespassword@langfuse-db:5432/langfuse"
+      NEXTAUTH_SECRET: "my-very-secret-salt-key-for-bank-workshop-2026"
+      SALT: "salt-for-encryption-keys-1234567890"
+      NEXTAUTH_URL: "http://localhost:3000"
+      TELEMETRY_ENABLED: "false"
+
+volumes:
+  langfuse_db_data:

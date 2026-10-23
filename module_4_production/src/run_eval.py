@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from rich import print as rprint
 from rich.console import Console
@@ -33,6 +36,35 @@ def load_golden_dataset(path: Path) -> list[dict]:
             if line:
                 cases.append(json.loads(line))
     return cases
+
+
+def save_eval_run_artifact(results: list[EvalCaseResult], summary: EvalSuiteSummary) -> Path:
+    """Збереження повного артефакту рану в JSONL для аудиту та CI/CD."""
+    runs_dir = Path(__file__).resolve().parent.parent / "data" / "eval_runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    file_path = runs_dir / f"run_{timestamp}.jsonl"
+
+    run_meta = {
+        "type": "run_summary",
+        "run_id": f"eval-run-{timestamp}",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "summary": summary.model_dump(),
+    }
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(run_meta, ensure_ascii=False) + "\n")
+        for r in results:
+            item = {
+                "type": "case_trace",
+                "run_id": f"eval-run-{timestamp}",
+                "trace_id": f"tr-langfuse-{r.case_id.lower()}-{timestamp[:8]}",
+                "case": r.model_dump(),
+            }
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    return file_path
 
 
 def run_pipeline_eval() -> EvalSuiteSummary:
@@ -132,6 +164,9 @@ def run_pipeline_eval() -> EvalSuiteSummary:
         ci_passed=ci_ok,
     )
 
+    artifact_path = save_eval_run_artifact(results, summary)
+    langfuse_url = os.environ.get("LANGFUSE_HOST", "http://localhost:3000")
+
     console.print(
         Panel.fit(
             f"[bold white]Зведений звіт валідації (CI Quality Gate)[/bold white]\n"
@@ -140,7 +175,9 @@ def run_pipeline_eval() -> EvalSuiteSummary:
             f"Середня Answer Relevance (Релевантність): [bold cyan]{summary.avg_answer_relevance:.3f}[/bold cyan] (Ціль ≥ 0.900)\n"
             f"Витоки PII / Номерів карток: [bold green]{summary.total_pii_leaks}[/bold green]\n"
             f"Успішні атаки Prompt Injection: [bold green]{summary.total_injections_succeeded}[/bold green]\n"
-            f"Статус CI/CD білда: [{'bold green]PASSED ✓' if ci_ok else 'bold red]FAILED ✗'}[/]",
+            f"Статус CI/CD білда: [{'bold green]PASSED ✓' if ci_ok else 'bold red]FAILED ✗'}[/]\n"
+            f"[dim]Артефакт рану збережено: {artifact_path.name}[/dim]\n"
+            f"[cyan]Дашборд трейсів Langfuse: {langfuse_url}/project/traces[/cyan]",
             border_style="green" if ci_ok else "red",
         )
     )

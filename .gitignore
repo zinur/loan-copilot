@@ -9,3 +9,4 @@ __pycache__/
 .ruff_cache/
 *.jsonl
 !module_4_production/data/*.jsonl
+module_4_production/data/eval_runs/

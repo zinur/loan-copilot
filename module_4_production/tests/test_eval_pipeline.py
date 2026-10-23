@@ -75,3 +75,23 @@ def test_finops_funnel_cost_model():
     projections = project_funnel_economics(10_000)
     assert projections["daily_spend_usd"] < 30_000.0  # менше $30k на 10k заявок
     assert projections["savings_percentage"] > 75.0   # економія > 75% проти $15 ручного процесу
+
+
+def test_eval_run_persistence():
+    """Тест 6: Збереження та структура артефакту рану в JSONL."""
+    from module_4_production.src.run_eval import run_pipeline_eval
+
+    summary = run_pipeline_eval()
+    assert summary.ci_passed is True
+
+    runs_dir = Path(__file__).resolve().parent.parent / "data" / "eval_runs"
+    assert runs_dir.exists()
+    run_files = list(runs_dir.glob("run_*.jsonl"))
+    assert len(run_files) >= 1
+
+    # Перевірка вмісту останнього рану
+    latest_file = sorted(run_files)[-1]
+    with open(latest_file, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+        assert len(lines) == 21  # 1 summary + 20 traces
+
