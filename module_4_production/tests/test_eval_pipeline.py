@@ -68,13 +68,13 @@ def test_adversarial_injection_refusal():
 
 
 def test_finops_funnel_cost_model():
-    """Тест 5: Перевірка FinOps-моделі на скейлі 10 000 заявок/день."""
+    """Тест 5: FinOps-модель на PB-scale 14 000 заявок/день (consumer loans)."""
     case_cost = calculate_case_cost(use_prompt_caching=True)
-    assert 2.0 <= case_cost["total_case_cost"] <= 3.0  # ~$2.57 за заявку
+    assert 0.3 <= case_cost["total_case_cost"] <= 0.7  # ~$0.47 за заявку (UBKI $1.50 × 0.3 + LLM $0.01 + infra)
 
-    projections = project_funnel_economics(10_000)
-    assert projections["daily_spend_usd"] < 30_000.0  # менше $30k на 10k заявок
-    assert projections["savings_percentage"] > 75.0   # економія > 75% проти $15 ручного процесу
+    projections = project_funnel_economics(14_000)
+    assert projections["daily_spend_usd"] < 10_000.0  # менше $10k на 14k заявок
+    assert projections["savings_percentage"] > 75.0   # економія > 75% проти $3.50 legacy
 
 
 def test_eval_run_persistence():

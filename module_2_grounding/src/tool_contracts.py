@@ -132,7 +132,7 @@ def credit_history_pull(
     Side-effect: external-read (PII)
     Consent Gate: обов'язкова наявність валідного consent_id
     Role required: loan_officer / credit_analyst
-    Cost: $8.50
+    Cost: ~$1.50 (UBKI · UAH 50–80 за lookup)
     """
     # 1. In-code RBAC перевірка
     if caller_role not in {"loan_officer", "credit_analyst", "orchestrator"}:

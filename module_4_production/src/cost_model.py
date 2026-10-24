@@ -28,7 +28,7 @@ REASONING_LLM_TIER = TierPricing(
 # Вартість виклику зовнішніх та внутрішніх інструментів
 TOOL_COSTS = {
     "kyc_lookup": 0.80,          # Санкційні списки та реєстри PEP
-    "credit_history_pull": 8.50, # Запит до Бюро кредитних історій
+    "credit_history_pull": 1.50, # UBKI (Українське БКІ): UAH 50–80 за lookup
     "evaluate_risk_tier": 0.05,  # Внутрішня скорингова модель банку
 }
 
@@ -64,7 +64,8 @@ def calculate_case_cost(
     underwriter_total = underwriter_prompt_cost + underwriter_comp_cost
 
     # 4. Зовнішні інструменти (з урахуванням воронки конверсії до підписання)
-    # З 10 000 користувачів до виклику БКІ доходять 30% (після проходження Consent Gate)
+    # З усіх стартів до виклику UBKI доходять ~50% (після проходження Consent Gate),
+    # з них UBKI pull — ~30% від початкової воронки (на PB scale 14k/день).
     bureau_conversion = 0.30
     tools_total = (
         (TOOL_COSTS["credit_history_pull"] * bureau_conversion)
@@ -83,16 +84,19 @@ def calculate_case_cost(
     }
 
 
-def project_funnel_economics(daily_starts: int = 10_000) -> dict[str, any]:
-    """Проєкція щоденних і щомісячних витрат при масштабуванні."""
+def project_funnel_economics(daily_starts: int = 14_000) -> dict[str, any]:
+    """Проєкція щоденних і щомісячних витрат при масштабуванні.
+
+    Default 14k/день — PB consumer loans subset (~5M/рік).
+    """
     single_case = calculate_case_cost(use_prompt_caching=True)
     cost_per_case = single_case["total_case_cost"]
 
     daily_spend = daily_starts * cost_per_case
     monthly_spend = daily_spend * 30
 
-    # Традиційний банківський процес: $15 за заявку (оператор + ручний андеррайтинг)
-    traditional_case_cost = 15.0
+    # Legacy manual flow: ~$3.50 avg/заявку (digital-first mix з частковим manual)
+    traditional_case_cost = 3.50
     traditional_monthly = daily_starts * traditional_case_cost * 30
     monthly_savings = traditional_monthly - monthly_spend
 
