@@ -1,0 +1,446 @@
+# ─────────────────────────────────────────────────────────────────────
+# W3 Sequential workflow — Durable Loan Copilot з HITL + Saga.
+#
+# НА РІВНІ W3 Option A (цей YAML) стає ОСНОВНИМ, а не альтернативою:
+# тільки Sequential workflow дає durable `interrupt_before` з persistence,
+# webhook resume, та per-state retry policies. `assistant_ids` + chat
+# не придатні для 24h/7d/multi-day pauses.
+#
+# Deploy: Workflows → + Create Workflow → YAML view → paste → Save.
+# Execute: Start Execution → payload з demo_payloads.md.
+# Resume webhook: POST /workflows/{id}/executions/{thread_id}/resume
+# ─────────────────────────────────────────────────────────────────────
+
+# CodeMie Workflow · Loan Copilot W3 — Durable (FSM + HITL + Saga)
+# ----------------------------------------------------------------------------
+# W3 додає поверх W2:
+#   • `interrupt_before` на 3 HITL waits (docs_requested, offer, sign_awaiting)
+#   • `interrupt_before` на 2 conditional HITL gates (analyst_review, committee_review)
+#   • Pre-write evaluator gate (verify_before_send)
+#   • Saga compensation state (на cancellation → unblock_limit)
+#   • Idempotency key handling у sign_awaiting (dedup webhooks)
+#
+# END-STATE: Loan Copilot переживає `kill -9` K8s о 3:00, resumes через
+# webhook, НЕ дублює виплат 150k UAH, виконує Saga rollback при cancel.
+#
+# ПЕРЕДУМОВИ:
+#   1. Усі W1 + W2 assistants створені (intake, eligibility, risk, underwriter)
+#   2. НОВІ W3 assistants:
+#        docs-processor-agent  (OCR output parser)
+#        contract-draft-agent  (template → text)
+#        verify-before-send-agent (pre-write evaluator)
+#        compensation-agent    (Saga rollback)
+#   3. CodeMie checkpointer: Postgres або SQLite (у UI: Admin → Workflows → Checkpointer)
+#   4. Webhook endpoints зареєстровані у Admin → Integrations → Webhooks:
+#        docs.uploaded, offer.decision, contract.signed
+# ----------------------------------------------------------------------------
+
+name: loan-copilot-durable-w3
+description: >
+  Durable Loan Copilot з 11 state'ами, 3 durable waits (24h/7d/signed),
+  2 conditional HITL гейти, 1 evaluator pre-write gate, та Saga
+  compensation на cancellation.
+mode: Sequential
+
+# ----------------------------------------------------------------------------
+# ASSISTANTS
+# ----------------------------------------------------------------------------
+assistants:
+  - id: intake
+    assistant_id: intake-agent
+  - id: eligibility
+    assistant_id: eligibility-agent
+  - id: docs
+    assistant_id: docs-processor-agent        # НОВИЙ W3
+  - id: risk
+    assistant_id: risk-agent
+  - id: underwriter
+    assistant_id: underwriter
+  - id: contract
+    assistant_id: contract-draft-agent        # НОВИЙ W3
+  - id: verifier
+    assistant_id: verify-before-send-agent    # НОВИЙ W3 — Pre-write gate
+  - id: compensator
+    assistant_id: compensation-agent          # НОВИЙ W3 — Saga rollback
+
+# ----------------------------------------------------------------------------
+# STATES — 11-node durable FSM
+# ----------------------------------------------------------------------------
+states:
+
+  # ──────────── 1. INTAKE ────────────
+  - id: intake-state
+    assistant_id: intake
+    task: |
+      Збери структуровану заявку (8 полів) + початкові документи.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "full_name":       {"type": "string"},
+          "tax_id":          {"type": "string"},
+          "amount":          {"type": "number"},
+          "term_months":     {"type": "integer"},
+          "monthly_income":  {"type": "number"},
+          "purpose":         {"type": "string"},
+          "intake_complete": {"type": "boolean"}
+        },
+        "required": ["intake_complete"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "intake_complete == True"
+        then: docs-requested-state
+        otherwise: end
+
+  # ──────────── 2. DOCS REQUESTED · DURABLE WAIT 24-48h ────────────
+  - id: docs-requested-state
+    assistant_id: intake  # just prompts user
+    task: |
+      Повідом клієнту: "Для продовження завантаж фото паспорта та
+      довідки про доходи у Privat24". Workflow паузиться.
+
+      ВАЖЛИВО: не roundtrip через LLM — цей state це просто UI prompt +
+      interrupt. Resume через webhook `docs.uploaded`.
+
+      Idempotency key: {{thread_id}}::docs.uploaded
+    interrupt_before: true  # <-- DURABLE WAIT (CodeMie checkpointer зберігає state)
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "docs_uploaded": {"type": "boolean"},
+          "doc_urls": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["docs_uploaded"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 1  # не ретраймо human wait, timeout = SLA 48h
+    next:
+      condition:
+        expression: "docs_uploaded == True"
+        then: docs-processing-state
+        otherwise: compensation-state
+
+  # ──────────── 3. DOCS PROCESSING · OCR ────────────
+  - id: docs-processing-state
+    assistant_id: docs
+    task: |
+      Отримав URLs: {{doc_urls}}.
+      Виклич tool `ocr.extract(url)` для кожного → парsiмо структуровані
+      поля (ПІБ, дата народження, адреса, income).
+
+      Поверни confidence score (0.0-1.0).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "extracted_fields": {"type": "object"},
+          "ocr_confidence":   {"type": "number"},
+          "docs_valid":       {"type": "boolean"}
+        },
+        "required": ["ocr_confidence", "docs_valid"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 3
+      initial_interval: 2.0  # seconds
+      backoff_factor: 2.0    # 2s, 4s, 8s
+    next:
+      condition:
+        expression: "docs_valid == True and ocr_confidence >= 0.85"
+        then: kyc-state
+        otherwise: analyst-review-state
+
+  # ──────────── 4. ANALYST REVIEW · CONDITIONAL HITL (OCR < 0.85) ────────────
+  - id: analyst-review-state
+    assistant_id: docs
+    task: |
+      OCR confidence {{ocr_confidence}} < 0.85 — потрібна людська
+      перевірка документів. Workflow паузиться до ручного підтвердження.
+    interrupt_before: true  # <-- HITL gate (conditional — тільки якщо OCR failed)
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "analyst_approved": {"type": "boolean"},
+          "analyst_notes":    {"type": "string"}
+        },
+        "required": ["analyst_approved"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "analyst_approved == True"
+        then: kyc-state
+        otherwise: compensation-state
+
+  # ──────────── 5. KYC (W2 pattern) ────────────
+  - id: kyc-state
+    assistant_id: risk
+    task: |
+      Виклич kyc.lookup({tax_id: "{{tax_id}}"}).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "kyc_passed": {"type": "boolean"}
+        },
+        "required": ["kyc_passed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "kyc_passed == True"
+        then: credit-history-state
+        otherwise: end
+
+  # ──────────── 6. CREDIT HISTORY (W2 pattern, consent_id assumed from prior turn) ────────────
+  - id: credit-history-state
+    assistant_id: risk
+    task: |
+      Виклич credit_history.pull({tax_id: "{{tax_id}}", consent_id: "{{consent_id}}"}).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "credit_score": {"type": "integer"}
+        },
+        "required": ["credit_score"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 3
+      initial_interval: 1.0
+      backoff_factor: 2.0  # 1s, 2s, 4s — потім dead-letter
+    next:
+      condition:
+        expression: "credit_score >= 500"
+        then: underwriter-state
+        otherwise: end
+
+  # ──────────── 7. UNDERWRITER (4-tier policy) ────────────
+  - id: underwriter-state
+    assistant_id: underwriter
+    task: |
+      Розрахунок PMT, PTI, policy band за SOP-CREDIT-02 §5.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "risk_band":  {"type": "string", "enum": ["A", "B", "C", "D"]},
+          "decision":   {"type": "string", "enum": ["approve", "decline", "committee_review"]},
+          "pti":        {"type": "number"},
+          "rate_apr":   {"type": "number"}
+        },
+        "required": ["decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      switch:
+        cases:
+          - condition: "decision == 'approve'"
+            state_id: contract-draft-state
+          - condition: "decision == 'committee_review'"
+            state_id: committee-review-state
+        default: end  # decline → end
+
+  # ──────────── 8. COMMITTEE REVIEW · CONDITIONAL HITL (grey zone) ────────────
+  - id: committee-review-state
+    assistant_id: underwriter
+    task: |
+      Risk band = {{risk_band}} (сіра зона, Tier C: score 550–650).
+      Workflow паузиться до рішення кредитного комітету.
+    interrupt_before: true  # <-- HITL conditional
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "committee_decision": {"type": "string", "enum": ["approve", "decline"]},
+          "committee_notes":    {"type": "string"}
+        },
+        "required": ["committee_decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "committee_decision == 'approve'"
+        then: contract-draft-state
+        otherwise: end
+
+  # ──────────── 9. CONTRACT DRAFT · TOOL CALL (reserve limit) ────────────
+  - id: contract-draft-state
+    assistant_id: contract
+    task: |
+      Виклич tool `contract.draft({tax_id, amount, term, rate_apr})`.
+      Side-effect: internal-write — РЕЗЕРВУЄ ліміт у картковому бекенді.
+
+      КРИТИЧНО: якщо далі flow crashes, резерв треба зняти (Saga).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "contract_id":       {"type": "string"},
+          "contract_text_url": {"type": "string"},
+          "limit_reserved":    {"type": "boolean"}
+        },
+        "required": ["contract_id", "limit_reserved"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: verify-before-send-state
+
+  # ──────────── 10. VERIFY BEFORE SEND · PRE-WRITE EVALUATOR GATE ────────────
+  - id: verify-before-send-state
+    assistant_id: verifier
+    task: |
+      Pre-write gate. Звіряй:
+        contract.rate_apr == underwriter.rate_apr ({{rate_apr}})
+        contract.amount == intake.amount ({{amount}})
+        contract.term == intake.term_months ({{term_months}})
+        contract.borrower_tax_id == intake.tax_id ({{tax_id}})
+
+      Якщо mismatch — БЛОК + ескалація інженеру. НЕ надсилай клієнту.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "verify_passed":  {"type": "boolean"},
+          "discrepancies":  {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["verify_passed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "verify_passed == True"
+        then: offer-state
+        otherwise: compensation-state
+
+  # ──────────── 11. OFFER · DURABLE WAIT 7d ────────────
+  - id: offer-state
+    assistant_id: intake
+    task: |
+      Надсилаємо клієнту персональну пропозицію: amount={{amount}},
+      term={{term_months}} міс, rate={{rate_apr}}%, PTI={{pti}}.
+      Чекаємо accept/reject (до 7 днів).
+
+      Idempotency key: {{thread_id}}::offer.decision
+    interrupt_before: true  # <-- DURABLE WAIT 7d (longest in workflow)
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "client_decision": {"type": "string", "enum": ["accept", "reject", "expired"]}
+        },
+        "required": ["client_decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "client_decision == 'accept'"
+        then: sign-awaiting-state
+        otherwise: compensation-state  # reject OR expired → unblock limit
+
+  # ──────────── 12. SIGN AWAITING · DURABLE WAIT + IDEMPOTENCY ────────────
+  - id: sign-awaiting-state
+    assistant_id: contract
+    task: |
+      Клієнт підписує через Дія.Підпис. Чекаємо webhook `contract.signed`.
+
+      ⚠️ IDEMPOTENCY (КРИТИЧНО):
+      Webhook може прийти 2+ рази (мережа, Дія.Підпис retry).
+      Composite key: SHA256({{tax_id}}::{{contract_id}}::{{event_id}}).
+      Якщо key вже у БД `processed_events` → поверни {disbursed: true}
+      БЕЗ повторного виклику disburse.
+
+      Виклич tool `check_idempotency(event_key)`:
+        - exists → return cached result (no disburse)
+        - not_exists → call `disburse(contract_id, amount)` + write key
+    interrupt_before: true  # <-- DURABLE WAIT until webhook
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "disbursed":      {"type": "boolean"},
+          "disburse_id":    {"type": "string"},
+          "event_key":      {"type": "string"},
+          "was_duplicate":  {"type": "boolean"}
+        },
+        "required": ["disbursed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: end
+      store_in_context: true
+
+  # ──────────── X. COMPENSATION · SAGA ROLLBACK ────────────
+  - id: compensation-state
+    assistant_id: compensator
+    task: |
+      Виконай компенсуючі дії для cancellation / rejection / verify-fail:
+
+      1. Якщо limit_reserved == true → виклич `limit.release(contract_id)`.
+      2. Якщо contract_id не null → виклич `contract.cancel(contract_id)`.
+      3. Запиши у audit `limit_released_rollback` з reason.
+      4. Повідом клієнту (SMS/email): "Заявка скасована, резерв знято".
+
+      Поверни final status.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "limit_released":   {"type": "boolean"},
+          "contract_cancelled":{"type": "boolean"},
+          "notification_sent":{"type": "boolean"}
+        },
+        "required": ["limit_released"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: end
+      store_in_context: true
+
+# ----------------------------------------------------------------------------
+# WORKFLOW SETTINGS
+# ----------------------------------------------------------------------------
+recursion_limit: 50
+max_concurrency: 1
+enable_summarization_node: false
+
+# Durable Waits support — CodeMie сам використовує Postgres checkpointer
+# при `interrupt_before: true`. Для production:
+#   Admin → Workflows → Checkpointer → Postgres (НЕ Memory).
+# Memory checkpointer втрачає state при restart'і pod'ів. Для demo — OK.
+
+# ----------------------------------------------------------------------------
+# NOTES
+# ----------------------------------------------------------------------------
+# 1. Resume webhooks (external systems calling CodeMie):
+#    POST /api/v1/workflows/{workflow_id}/executions/{thread_id}/resume
+#    Body: output_schema fields для state на якому зупинився workflow.
+#
+#    Приклади:
+#    - docs.uploaded: {"docs_uploaded": true, "doc_urls": [...]}
+#    - offer.decision: {"client_decision": "accept"}
+#    - contract.signed: {"disbursed": true, "event_key": "<sha256>", ...}
+#
+# 2. Idempotency enforcement — на tool level, НЕ на prompt level.
+#    `check_idempotency` tool має реальну БД-перевірку, не LLM reasoning.
+#    У mock режимі — Python wrapper перевіряє dict.
+#
+# 3. Saga compensation — викликається з 4 кроків: docs_requested timeout,
+#    analyst_review reject, verify_before_send fail, offer reject/expire.
+#    Усі ведуть у той самий compensation-state (DRY).
+#
+# 4. Retry policies — тільки на tool-calling states (docs-processing,
+#    credit-history). На HITL states — max_attempts=1 (не ретраймо людину).
+#
+# 5. Timeout на durable waits — конфігурується на Workflow level у
+#    Admin → Workflows → Execution config → max_wait_duration:
+#    - docs_requested: 48h → timeout → compensation
+#    - offer: 7d → expired → compensation
+#    - sign_awaiting: 7d → expired → compensation (повернення лімит)
+# ----------------------------------------------------------------------------
