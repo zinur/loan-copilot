@@ -506,9 +506,390 @@ html, body {
 .score-total .vs-judge { font-size:0.7em; color:var(--text-muted); font-family:var(--font-mono); }
 
 @media (max-width:900px) { .stage { width:100vw; height:56.25vw; } }
+
+/* ============ FLOW CANVAS (lucide + flip cards + SVG wires) ============ */
+.flow-canvas {
+  position:relative; flex:1; min-height:0;
+  padding:0.6em 0.4em 0.3em;
+}
+.flow-wires {
+  position:absolute; inset:0; width:100%; height:100%;
+  pointer-events:none; z-index:1; overflow:visible;
+}
+.wire { fill:none; stroke:var(--border-secondary); stroke-width:1.75; opacity:0.75; }
+.wire-hitl       { stroke:var(--box-sp);  stroke-dasharray:5 4; opacity:0.9; }
+.wire-gate       { stroke:var(--box-gate);stroke-dasharray:5 4; opacity:0.9; }
+.wire-evaluator  { stroke:var(--box-out); opacity:0.95; }
+.wire-turn       { stroke:var(--accent);  opacity:0.9; }
+
+.flow-grid {
+  position:relative; z-index:2;
+  width:100%; height:100%; display:grid; gap:3.5em 1.6em;
+  align-content:center;
+}
+.flow-grid-snake-6 { grid-template-columns:repeat(6, 1fr); grid-auto-rows:8.5em; }
+
+.flow-card {
+  perspective:1200px; cursor:pointer;
+  min-height:8em;
+}
+.flow-card-inner {
+  position:relative; width:100%; height:100%;
+  transform-style:preserve-3d;
+  transition:transform 0.55s cubic-bezier(.4,.2,.2,1);
+}
+.flow-card.is-flipped .flow-card-inner { transform:rotateY(180deg); }
+
+.flow-face {
+  position:absolute; inset:0;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  background:var(--bg-card);
+  border:1px solid var(--border-primary);
+  border-top:3px solid var(--k, var(--box-std));
+  border-radius:var(--radius-md);
+  padding:0.55em 0.7em;
+  display:flex; flex-direction:column; gap:0.25em;
+  box-shadow:0 1px 3px rgba(0,0,0,0.3);
+}
+.flow-card:hover .flow-face-front {
+  box-shadow:0 6px 20px rgba(0,0,0,0.45);
+  transform:translateY(-1px);
+}
+.flow-face-front { justify-content:center; }
+.flow-face-back {
+  transform:rotateY(180deg);
+  justify-content:flex-start;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--k, var(--box-std)) 12%, var(--bg-card)) 0%, var(--bg-secondary) 100%);
+  border:1px solid var(--k, var(--box-std));
+  border-top:3px solid var(--k, var(--box-std));
+  box-shadow:0 6px 24px rgba(0,0,0,0.55), inset 0 0 0 1px color-mix(in srgb, var(--k, var(--box-std)) 25%, transparent);
+}
+
+.fc-head { display:flex; align-items:center; gap:0.4em; margin-bottom:0.1em; }
+.fc-num {
+  font-family:var(--font-mono); font-size:0.62em; font-weight:700;
+  color:var(--k, var(--box-std));
+  border:1px solid var(--k, var(--box-std));
+  padding:0.1em 0.42em; border-radius:999px; line-height:1;
+}
+.fc-ico {
+  width:1.15em; height:1.15em; flex-shrink:0;
+  color:var(--k, var(--box-std));
+}
+.fc-kind {
+  font-size:0.6em; font-weight:700; letter-spacing:0.14em;
+  text-transform:uppercase; color:var(--text-dim);
+  margin-left:auto;
+}
+.fc-name {
+  font-size:1.05em; font-weight:600; font-family:var(--font-mono);
+  color:var(--text-primary); line-height:1.15;
+}
+.fc-anno {
+  font-size:0.72em; color:var(--text-tertiary);
+  font-style:italic; line-height:1.3;
+}
+.fc-anno .pause { color:var(--box-sp); font-style:normal; font-weight:600; }
+.fc-anno .cond  { color:var(--box-gate); font-style:normal; font-weight:600; }
+
+.fc-back-head {
+  display:flex; align-items:center; gap:0.4em;
+  padding-bottom:0.3em; margin-bottom:0.35em;
+  border-bottom:1px solid var(--border-primary);
+}
+.fc-back-title {
+  font-size:0.72em; font-weight:700; letter-spacing:0.08em;
+  text-transform:uppercase; color:var(--k, var(--box-std));
+}
+.fc-back-body {
+  font-size:0.72em; color:var(--text-secondary);
+  line-height:1.4;
+}
+.fc-back-body b { color:var(--text-primary); }
+.fc-back-hint {
+  margin-top:auto; font-size:0.58em; color:var(--text-dim);
+  letter-spacing:0.08em; text-transform:uppercase; text-align:right;
+  padding-top:0.25em;
+}
+
+/* flip hint pulse on front */
+.flow-face-front::after {
+  content:''; position:absolute; right:0.5em; bottom:0.4em;
+  width:4px; height:4px; border-radius:50%;
+  background:var(--k, var(--box-std)); opacity:0.4;
+}
+
+/* ============ Generic .card flip (grid of info cards) ============ */
+.card.flip-card {
+  perspective:1200px; cursor:pointer;
+  padding:0; background:transparent; border:none;
+  overflow:visible;
+  min-height:8em;
+}
+.card.flip-card::before { display:none; }  /* hide the ::before colored stripe on wrapper */
+.flip-card-inner {
+  position:relative; width:100%; height:100%; min-height:inherit;
+  transform-style:preserve-3d;
+  transition:transform 0.55s cubic-bezier(.4,.2,.2,1);
+}
+.card.flip-card.is-flipped .flip-card-inner { transform:rotateY(180deg); }
+.flip-card-face {
+  position:absolute; inset:0;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  background:var(--bg-card);
+  border:1px solid var(--border-primary);
+  border-radius:var(--radius-lg);
+  padding:0.9em 1.1em;
+  overflow:hidden;
+}
+.flip-card-face::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:4px;
+  background:var(--border-color, var(--border-primary));
+}
+.card.flip-card.c-std  .flip-card-face { --border-color:var(--box-std); }
+.card.flip-card.c-sp   .flip-card-face { --border-color:var(--box-sp); }
+.card.flip-card.c-gate .flip-card-face { --border-color:var(--box-gate); }
+.card.flip-card.c-out  .flip-card-face { --border-color:var(--box-out); }
+.card.flip-card.c-acc  .flip-card-face { --border-color:var(--accent); }
+.flip-card-back {
+  transform:rotateY(180deg);
+  background:linear-gradient(135deg,
+    color-mix(in srgb, var(--border-color, var(--box-std)) 15%, var(--bg-card)) 0%,
+    var(--bg-secondary) 100%);
+  border:1px solid var(--border-color, var(--box-std));
+  box-shadow:0 6px 24px rgba(0,0,0,0.55), inset 0 0 0 1px color-mix(in srgb, var(--border-color, var(--box-std)) 25%, transparent);
+  display:flex; flex-direction:column;
+}
+.flip-card-back .card-body { flex:1; }
+.flip-card-back .fc-back-hint {
+  font-size:0.7em; color:var(--text-dim);
+  letter-spacing:0.08em; text-transform:uppercase; text-align:right;
+  padding-top:0.4em;
+}
+.card.flip-card:hover .flip-card-front {
+  box-shadow:0 6px 20px rgba(0,0,0,0.45);
+  transform:translateY(-1px);
+}
+
+/* ============ KA-BOX enhancements (icon + flip, programmatic) ============ */
+.ka-box.ka-flip {
+  perspective:900px; cursor:pointer;
+  padding:0; background:transparent; border:none;
+  box-shadow:none;
+  overflow:visible;
+}
+.ka-box.ka-flip .ka-inner {
+  position:relative; width:100%; height:100%;
+  min-height:4.5em;
+  transform-style:preserve-3d;
+  transition:transform 0.5s cubic-bezier(.4,.2,.2,1);
+}
+.ka-box.ka-flip.is-flipped .ka-inner { transform:rotateY(180deg); }
+.ka-box.ka-flip .ka-face {
+  position:absolute; inset:0;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  background:var(--bg-card);
+  border:1px solid var(--border-primary);
+  border-left:3px solid var(--node-color, var(--box-std));
+  border-radius:var(--radius-md);
+  padding:0.65em 0.75em;
+  box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  display:flex; flex-direction:column;
+}
+.ka-box.ka-flip .ka-front {
+  gap:0.2em;
+  justify-content:center;
+}
+.ka-box.ka-flip .ka-front-head {
+  display:flex; align-items:center; gap:0.4em;
+  margin-bottom:0.1em;
+}
+.ka-box.ka-flip .ka-ico {
+  width:1.2em; height:1.2em; flex-shrink:0;
+  color:var(--node-color, var(--box-std));
+}
+.ka-box.ka-flip .ka-front b { font-size:0.82em; font-family:var(--font-mono); font-weight:600; color:var(--text-primary); line-height:1.2; }
+.ka-box.ka-flip .ka-front span { font-size:0.68em; color:var(--text-dim); font-style:italic; line-height:1.3; }
+.ka-box.ka-flip .ka-back {
+  transform:rotateY(180deg);
+  background:linear-gradient(135deg, color-mix(in srgb, var(--node-color, var(--box-std)) 14%, var(--bg-card)) 0%, var(--bg-secondary) 100%);
+  border:1px solid var(--node-color, var(--box-std));
+  border-left:3px solid var(--node-color, var(--box-std));
+  box-shadow:0 4px 16px rgba(0,0,0,0.5), inset 0 0 0 1px color-mix(in srgb, var(--node-color, var(--box-std)) 25%, transparent);
+  justify-content:space-between;
+  padding:0.55em 0.7em;
+}
+.ka-box.ka-flip .ka-back-lane {
+  font-size:0.55em; font-weight:700; letter-spacing:0.14em;
+  color:var(--node-color, var(--box-std));
+  text-transform:uppercase; opacity:0.85;
+}
+.ka-box.ka-flip .ka-back-title {
+  font-size:0.78em; font-weight:700; font-family:var(--font-mono);
+  color:var(--text-primary); line-height:1.2;
+  margin-top:0.1em;
+}
+.ka-box.ka-flip .ka-back-body {
+  font-size:0.66em; color:var(--text-secondary);
+  line-height:1.35; margin-top:0.25em; flex:1;
+}
+.ka-box.ka-flip .ka-back-hint {
+  font-size:0.52em; color:var(--text-dim);
+  letter-spacing:0.08em; text-transform:uppercase; text-align:right;
+}
+/* keep AI pill badge visible on flip boxes */
+.ka-box.ka-flip.ai::before { z-index:3; }
+.ka-box.ka-flip:hover .ka-front {
+  box-shadow:0 4px 14px rgba(0,0,0,0.5);
+  transform:translateY(-1px);
+}
+
 </style>
 </head>
 <body>
+
+<!-- ============ LUCIDE ICON SPRITE (MIT · lucide.dev) ============ -->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+  <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/>
+    <path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>
+  </symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+  </symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 11V6a2 2 0 0 0-4 0"/>
+    <path d="M14 10V4a2 2 0 0 0-4 0v2"/>
+    <path d="M10 10.5V6a2 2 0 0 0-4 0v8"/>
+    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+  </symbol>
+  <symbol id="i-shield-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>
+    <path d="m9 12 2 2 4-4"/>
+  </symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" x2="8" y1="13" y2="13"/>
+    <line x1="16" x2="8" y1="17" y2="17"/>
+    <line x1="10" x2="8" y1="9" y2="9"/>
+  </symbol>
+  <symbol id="i-id-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="20" height="14" x="2" y="5" rx="2"/>
+    <circle cx="9" cy="12" r="2"/>
+    <path d="M15 11h3"/><path d="M15 15h3"/>
+    <path d="M6 16c0-1.1 1.3-2 3-2s3 .9 3 2"/>
+  </symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1"/>
+    <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1"/>
+    <path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>
+  </symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 3v18h18"/>
+    <path d="M7 16V9"/><path d="M12 16V6"/><path d="M17 16v-5"/>
+  </symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </symbol>
+  <symbol id="i-handshake" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m11 17 2 2a1 1 0 1 0 3-3"/>
+    <path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/>
+    <path d="m21 3 1 11h-2"/>
+    <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/>
+    <path d="M3 4h8"/>
+  </symbol>
+  <symbol id="i-signature" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 19.5V22H4"/>
+    <path d="M4 15.5V18l4.4-1.6c.42-.15.87-.23 1.32-.23H10a4.5 4.5 0 0 0 4.5-4.5v-.75"/>
+    <path d="M14 12.5v-10a2 2 0 0 1 4 0v2.5"/>
+    <path d="M18 10v2.5"/>
+  </symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="10" x2="14" y1="2" y2="2"/>
+    <line x1="12" x2="15" y1="14" y2="11"/>
+    <circle cx="12" cy="14" r="8"/>
+  </symbol>
+  <symbol id="i-database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+    <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+    <path d="M3 12A9 3 0 0 0 21 12"/>
+  </symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.78 7 7 0 1 0-12.98 3.84"/>
+    <path d="M17.5 19H9a5 5 0 1 1 4.9-6"/>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  </symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="16" height="16" x="4" y="4" rx="2"/>
+    <rect width="6" height="6" x="9" y="9"/>
+    <path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/>
+    <path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>
+  </symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+    <path d="M2 12h20"/>
+  </symbol>
+  <symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/>
+    <path d="M12 22V12"/>
+    <path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/>
+    <path d="m7.5 4.27 9 5.15"/>
+  </symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="8" height="8" x="3" y="3" rx="2"/>
+    <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
+    <rect width="8" height="8" x="13" y="13" rx="2"/>
+  </symbol>
+  <symbol id="i-git-branch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="6" x2="6" y1="3" y2="15"/>
+    <circle cx="18" cy="6" r="3"/>
+    <circle cx="6" cy="18" r="3"/>
+    <path d="M18 9a9 9 0 0 1-9 9"/>
+  </symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
+  </symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="4 17 10 11 4 5"/>
+    <line x1="12" x2="20" y1="19" y2="19"/>
+  </symbol>
+  <symbol id="i-browser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="20" height="16" x="2" y="4" rx="2"/>
+    <path d="M2 10h20"/>
+    <circle cx="5.5" cy="7" r=".5" fill="currentColor"/>
+    <circle cx="8" cy="7" r=".5" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="16 18 22 12 16 6"/>
+    <polyline points="8 6 2 12 8 18"/>
+  </symbol>
+  <symbol id="i-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+    <path d="M12 9v4"/><path d="M12 17h.01"/>
+  </symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="18" cy="5" r="3"/>
+    <circle cx="6" cy="12" r="3"/>
+    <circle cx="18" cy="19" r="3"/>
+    <line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/>
+    <line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>
+  </symbol>
+  <symbol id="i-dollar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="12" x2="12" y1="2" y2="22"/>
+    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+  </symbol>
+</defs>
+</svg>
 
 <div class="deck" id="deck">
   <div class="stage" id="stage">
@@ -647,7 +1028,7 @@ SLIDES.push({
           </div>
         </div>
         <div class="strip lilac" style="margin-top:0.4em">
-          <b>Домашнє · architect task:</b> розбір сценарію з 3 escalations (impossibility · regulatory boundary · time/budget cut) + 2 C4-діаграми + LLM-judge spec. 6 годин self-paced.
+          <b>Домашнє · 🤖 vibe-code OK (~6–8 год self-paced):</b> 4 coding exercises (M1–M4 у <code>module_*/0*-exercise.md</code>) — ContractAgent · Consent Gate+RAG · LangGraph FSM+Saga · eval pack+Langfuse · + архітектурний essay з 3 escalations + 2 C4-діаграми. <b>На вебінарі код не пишемо</b> — показуємо implementation у CodeMie.
         </div>
       </div>
       ${gloss([["EA","Enterprise Architecture"],["A2A","Agent-to-Agent"],["HITL","Human-in-the-loop"],["OTel","OpenTelemetry"]])}
@@ -669,12 +1050,68 @@ SLIDES.push({
 `
 });
 
+// --- Transformation Journey ---
+SLIDES.push({ title:"Transformation", html:`
+<div class="slide">
+  <div class="slide-title">Transformation journey · <span class="accent">4 тижні, 4 feature-add</span></div>
+  <div class="slide-subtitle">Loan Copilot еволюціонує щотижня · на кожному вебінарі ми показуємо delta у CodeMie · ви відтворюєте вдома · <span style="color:var(--accent)">натисни крок → що зламається без нього</span></div>
+  <div class="content">
+    <div class="flow-canvas" data-flow>
+      <svg class="flow-wires" aria-hidden="true"></svg>
+      <div class="flow-grid" style="grid-template-columns:repeat(4, 1fr); grid-auto-rows:1fr; gap:1em 2em">
+        ${[
+          {n:'W1', ic:'i-bot',          kind:'topology',  c:'std',  col:1, name:'Mocked copilot', anno:'Orchestrator + 7 specialists на моках', add:'<p><b>+ Що додаємо:</b> Orchestrator · 7 specialists · deterministic routing · A2A контракти · intake 8 полів</p><p style="margin-top:0.3em"><b>End-state:</b> flow intake→KYC→credit→decision працює наскрізно, усі tools — mocked.</p><p style="margin-top:0.3em; color:var(--warning)"><b>Якщо скіп W1:</b> monolith prompt sprawl → 50 завдань в одному промпті, нуль eval surface per role, неможливо виміряти якість окремих кроків.</p>'},
+          {n:'W2', ic:'i-database',     kind:'grounding', c:'sp',   col:2, name:'Grounded copilot', anno:'+ RAG · Tools · LLM Gateway', add:'<p><b>+ Що додаємо:</b> hybrid RAG на 40 POL/SOP регламентах · 3 real tools (kyc.lookup, credit_history.pull з <b>Consent Gate</b>, risk.score) · LLM Gateway (DIAL/Azure EU) · citation discipline</p><p style="margin-top:0.3em"><b>End-state:</b> агент відмовляється без цитати [POL-LOAN-01 §4.2.1]; UBKI заблокований без consent_id; PII маскується на gateway.</p><p style="margin-top:0.3em; color:var(--warning)"><b>Якщо скіп W2:</b> Air Canada bereavement case повторюється — bot вигадує політику банку; незаконний запит до UBKI → штраф НБУ.</p>'},
+          {n:'W3', ic:'i-workflow',     kind:'durable',   c:'gate', col:3, name:'Durable copilot', anno:'+ FSM · HITL · Saga · idempotency', add:'<p><b>+ Що додаємо:</b> LangGraph FSM з checkpointer · 3 durable waits (24h docs · 7d offer · e-sign webhook) · 2 conditional HITL гейти (analyst · committee) · Saga compensation · idempotency barrier</p><p style="margin-top:0.3em"><b>End-state:</b> виживає <code>kill -9</code> о 3-й ночі · webhook replay не породжує подвійних виплат · сіра зона Tier C ескалюється до комітету.</p><p style="margin-top:0.3em; color:var(--warning)"><b>Якщо скіп W3:</b> втрачені in-flight заявки після рестарту K8s · подвійна виплата 150k UAH з повтору вебхука Дія.Підпис.</p>'},
+          {n:'W4', ic:'i-shield-check', kind:'production',c:'out',  col:4, name:'Production-ready', anno:'+ Eval · Obs · Sec · FinOps', add:'<p><b>+ Що додаємо:</b> 20-case Golden Set · RAGAS metrics + LLM-judge · Pre-write evaluator gate · OTel GenAI tracing + Langfuse · FinOps model (14k/день PB scale) · red-team · EU AI Act compliance pack</p><p style="margin-top:0.3em"><b>End-state:</b> faithfulness &gt; 0.95 CI gate · prompt injection у PDF блокується · audit log 7 років · $0.47/case full · $0.01 incremental AI.</p><p style="margin-top:0.3em; color:var(--warning)"><b>Якщо скіп W4:</b> silent quality drift у проді · Chevrolet Tahoe-за-$1 attack успішний · NBU audit fail · не захистите бюджет перед CFO.</p>'},
+        ].map(s=>`
+          <div class="flow-card c-${s.c}" style="--k:var(--box-${s.c}); grid-column:${s.col}; grid-row:1" data-kind="${s.kind}" tabindex="0" role="button" aria-label="Flip ${s.n} ${s.name}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+            <div class="flow-card-inner">
+              <div class="flow-face flow-face-front">
+                <div class="fc-head"><span class="fc-num">${s.n}</span><svg class="fc-ico"><use href="#${s.ic}"/></svg><span class="fc-kind">${s.kind}</span></div>
+                <div class="fc-name">${s.name}</div>
+                <div class="fc-anno">${s.anno}</div>
+              </div>
+              <div class="flow-face flow-face-back">
+                <div class="fc-back-head"><svg class="fc-ico"><use href="#${s.ic}"/></svg><span class="fc-back-title">${s.n} · ${s.name}</span></div>
+                <div class="fc-back-body" style="font-size:0.72em; line-height:1.35">${s.add}</div>
+                <div class="fc-back-hint">← back</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.06)">
+      <b style="color:var(--accent)">Ключовий принцип курсу:</b> ми НЕ будуємо чотири різних проєкти — ми ростимо один Loan Copilot крок за кроком. У кінці W4 на репозиторії <code>loan-copilot</code> ви маєте production-ready банківський copilot, не 4 ізольовані демо.
+    </div>
+  </div>
+  ${gloss([["FSM","Finite State Machine"],["HITL","Human-in-the-loop"],["RAG","Retrieval-Augmented Generation"],["OTel","OpenTelemetry"]])}
+</div>`, notes:`
+<p><b>Transformation Journey · ключова ідея курсу (~3–4 хв)</b></p>
+<p>Цей слайд — спинний мозок курсу. Якщо студент запам'ятає тільки один слайд із 44 — це має бути цей.</p>
+<p><b>Чому це важить для PB SA аудиторії:</b></p>
+<ul>
+<li><b>Один артефакт, не чотири:</b> ми не стрибаємо між різними демо-проєктами. У репо <code>loan-copilot/</code> є module_1 → module_4 — кожен тиждень додає новий модуль ПОВЕРХ попереднього. У кінці W4 у вас production-ready копілот, а не 4 ізольовані експерименти.</li>
+<li><b>Delta видно у коді:</b> на кожному вебінарі ми демонструємо у CodeMie Workflows як саме цей тиждень змінює систему. Студент бачить діалог «ось що було, ось що стало».</li>
+<li><b>Skip-cost показує залежності:</b> якщо студент каже «я пропущу W3 про durable» — flip-картка показує конкретний інцидент (подвійна виплата 150k UAH), який його чекає. Це переконливіше за абстрактне «ви щось втратите».</li>
+</ul>
+<p><b>Як фасилітатор використовує слайд:</b></p>
+<ul>
+<li><b>На W1 kickoff:</b> показуємо всі 4 стани — «ось куди ми прийдемо за 4 тижні». Клацніть W4 → покажіть flip-face «якщо скіп W4». Це закладає мотивацію на всі 8 годин.</li>
+<li><b>На початку W2/W3/W4:</b> повертаємося до цього слайда, клацаємо попередній тиждень → «ось що ми вже маємо», клацаємо поточний → «ось що додаємо сьогодні». Це дає когнітивну прив'язку.</li>
+<li><b>На debrief у кінці курсу:</b> показуємо всі 4 перевернуті flip-картки — «погляньте, що ваш копілот тепер уміє».</li>
+</ul>
+<p><b>Питання до залу (W1 kickoff):</b> «Який із цих 4 тижнів для вашої команди найбільш болюче відсутній у поточних PoC?» — заклад: 80% скажуть W3 (durable) або W4 (eval + obs). Це хороша підводка до того, чому курс саме про архітектуру, а не про «ще один agent framework».</p>
+`});
+
 // --- W1 Agenda ---
 SLIDES.push({ title:"W1 Agenda", html:`
 <div class="slide">
   <div class="slide-title">Webinar 1 · <span class="accent">agenda</span></div>
   <div class="slide-subtitle">2 години · теорія (agnostic concepts) → практика (Loan Copilot walkthrough)</div>
   <div class="content">
+    <div class="strip" style="border-left-color:var(--box-std); background:rgba(34,151,246,0.08)"><b style="color:var(--box-std)">🏗 WHAT WE ADD THIS WEEK:</b> Orchestrator + 7 specialists · deterministic routing · A2A контракти · intake 8 полів · <b>end-state:</b> наскрізний flow на mocks у <code>module_1_agents/</code></div>
     <div class="split-22">
       <div class="card c-std">
         <div class="card-tag">ТЕОРІЯ</div>
@@ -714,14 +1151,28 @@ SLIDES.push({ title:"W1 Agenda", html:`
 SLIDES.push({ title:"AI ref arch", html:`
 <div class="slide">
   <div class="slide-title">AI enterprise reference architecture</div>
-  <div class="slide-subtitle">5 шарів + cross-cutting · де копілот живе у стеку банку</div>
+  <div class="slide-subtitle">5 шарів + cross-cutting · де копілот живе у стеку банку · <span style="color:var(--accent)">натисни шар → owner / failure / SLO</span></div>
   <div class="content">
     <div style="flex:1; display:flex; flex-direction:column; gap:0.5em">
-      <div class="card c-std"><div class="card-tag">1 · CHANNELS</div><div class="card-body">chat UI · mobile · contact center · messenger — → один вхід у orchestrator</div></div>
-      <div class="card c-sp"><div class="card-tag">2 · ORCHESTRATION</div><div class="card-body">Orchestrator + specialists · state store · workflow engine · LLM gateway · tool registry</div></div>
-      <div class="card c-acc"><div class="card-tag">3 · GROUNDING</div><div class="card-body">RAG · GraphRAG · Semantic Layer · Direct tools · Wiki-KB · Long-context — обираємо за формою даних</div></div>
-      <div class="card c-gate"><div class="card-tag">4 · DATA & TOOLS</div><div class="card-body">core banking · KYC/AML · credit bureau · OCR · CRM · e-sign — все з tool-контрактами</div></div>
-      <div class="card c-out"><div class="card-tag">5 · OBSERVABILITY & OPS</div><div class="card-body">Langfuse · OTel GenAI semconv · Prometheus · audit log 7 років · incident playbook</div></div>
+      ${[
+        {cls:'c-std',  ic:'i-browser',    tag:'1 · CHANNELS',             front:'chat UI · mobile · contact center · messenger — → один вхід у orchestrator', back:'<p><b>Owner:</b> Frontend / Mobile teams.</p><p style="margin-top:0.2em"><b>Failure mode:</b> rate-limit abuse, bot-vs-human, session hijack.</p><p style="margin-top:0.2em"><b>SLO:</b> p95 TTFB &lt; 300ms, 99.9% availability.</p><p style="margin-top:0.2em"><b>Банк:</b> Privat24 web + mobile + bank operator UI → один uniform input у orchestrator (не 3 розгалуження).</p>'},
+        {cls:'c-sp',   ic:'i-git-fork',   tag:'2 · ORCHESTRATION',        front:'Orchestrator + specialists · state store · workflow engine · LLM gateway · tool registry', back:'<p><b>Owner:</b> Platform / AI Engineering (НЕ data science).</p><p style="margin-top:0.2em"><b>Failure mode:</b> workflow crash → in-flight loans stuck; cost spike через runaway agent.</p><p style="margin-top:0.2em"><b>SLO:</b> workflow completion &gt; 99.5% на 24h window, cost per application &lt; $0.50.</p><p style="margin-top:0.2em"><b>Банк:</b> наш Loan Copilot живе ТУТ — LangGraph FSM + 7 specialists.</p>'},
+        {cls:'c-acc',  ic:'i-database',   tag:'3 · GROUNDING',            front:'RAG · GraphRAG · Semantic Layer · Direct tools · Wiki-KB · Long-context — обираємо за формою даних', back:'<p><b>Owner:</b> Data / Knowledge team.</p><p style="margin-top:0.2em"><b>Failure mode:</b> stale index (регламент оновили, bot цитує старий); hallucination від низької recall.</p><p style="margin-top:0.2em"><b>SLO:</b> RAGAS faithfulness &gt; 0.85; context recall &gt; 0.9 на golden set; re-index SLA &lt; 24h.</p><p style="margin-top:0.2em"><b>Банк:</b> Hybrid RAG для регламентів + Semantic Layer для балансів.</p>'},
+        {cls:'c-gate', ic:'i-wrench',     tag:'4 · DATA & TOOLS',         front:'core banking · KYC/AML · credit bureau · OCR · CRM · e-sign — все з tool-контрактами', back:'<p><b>Owner:</b> Integration / Backend teams (власники систем).</p><p style="margin-top:0.2em"><b>Failure mode:</b> external vendor 503 (БКІ, Дія.Підпис); schema drift між bank system та tool-contract.</p><p style="margin-top:0.2em"><b>SLO:</b> tool success rate &gt; 99.5%, timeout + dead-letter policy mandatory.</p><p style="margin-top:0.2em"><b>Банк:</b> ніколи raw SQL до core banking → завжди tool-contract з schema + RBAC.</p>'},
+        {cls:'c-out',  ic:'i-chart',      tag:'5 · OBSERVABILITY & OPS',  front:'Langfuse · OTel GenAI semconv · Prometheus · audit log 7 років · incident playbook', back:'<p><b>Owner:</b> SRE / Platform.</p><p style="margin-top:0.2em"><b>Failure mode:</b> silent degradation (quality drop без alert); cost spike unnoticed; audit log втрачений → NBU штраф.</p><p style="margin-top:0.2em"><b>SLO:</b> trace coverage 100%, alert MTTD &lt; 5 хв, audit retention 7 років (compliance).</p><p style="margin-top:0.2em"><b>Банк:</b> OTel GenAI semconv — стандартні span attributes для LLM calls; Langfuse для prompt/output review.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}" style="flex:1; min-height:0">
+          <div class="flip-card-inner"><div class="flip-card-face flip-card-front">
+            <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+            <div class="card-body">${c.front}</div>
+          </div>
+          <div class="flip-card-face flip-card-back" style="padding:0.55em 0.9em">
+            <div class="card-tag" style="margin-bottom:0.2em">${c.tag}</div>
+            <div class="card-body" style="font-size:0.72em; line-height:1.3">${c.back}</div>
+            <div class="fc-back-hint" style="padding-top:0.1em">← back</div>
+          </div></div>
+        </div>
+      `).join('')}
     </div>
     <div class="strip lilac"><b>Cross-cutting:</b> IAM/SSO · RBAC · PII masking на gateway · secrets · cost attribution · EU AI Act · банківська таємниця (Ст. 60)</div>
   </div>
@@ -1137,15 +1588,31 @@ SLIDES.push({ title:"AI platform ref stack", html:`
 SLIDES.push({ title:"Wins & Incidents", html:`
 <div class="slide">
   <div class="slide-title">Wins & Incidents · <span class="accent">вчимось на чужому кошті</span></div>
-  <div class="slide-subtitle">3 публічні перемоги + 3 гучні фейли з конкретними джерелами</div>
+  <div class="slide-subtitle">3 публічні перемоги + 3 гучні фейли з конкретними джерелами · <span style="color:var(--accent)">натисни картку → урок</span></div>
   <div class="content">
-    <div class="grid-3" style="flex:1">
-      <div class="card c-std"><div class="card-tag" style="color:var(--success)">✓ KLARNA</div><div class="card-body"><p><b>2.3M chats/міс</b> замінили ~700 FTE за 2024. CSAT на рівні з human.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">klarna.com/press 2024</p></div></div>
-      <div class="card c-std"><div class="card-tag" style="color:var(--success)">✓ DBS BANK</div><div class="card-body"><p><b>SGD 500M (~$370M)</b> impact від AI/ML у 2023, стверджено Annual Report.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">dbs.com/annual-report 2023</p></div></div>
-      <div class="card c-std"><div class="card-tag" style="color:var(--success)">✓ JPM COIN</div><div class="card-body"><p>Blockchain+AI: $1B+/день обороту, задокументовано.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">jpmorgan.com/kinexys</p></div></div>
-      <div class="card c-out"><div class="card-tag" style="color:var(--error)">✗ AIR CANADA</div><div class="card-body"><p><b>Бот вигадав політику</b> bereavement refund. BCCRT: бізнес відповідає за слова свого бота. $650 CAD.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">BCCRT 2024 · Moffatt v. Air Canada</p></div></div>
-      <div class="card c-out"><div class="card-tag" style="color:var(--error)">✗ CHEVROLET</div><div class="card-body"><p>Dealer chatbot продав <b>Tahoe за $1</b> після prompt-injection. Немає guardrails на price commitments.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">декілька медіа · 2023</p></div></div>
-      <div class="card c-out"><div class="card-tag" style="color:var(--error)">✗ DPD UK</div><div class="card-body"><p>Бот <b>лаявся та критикував DPD</b> — вірусний Twitter. Вимкнули протягом дня.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">BBC · Jan 2024</p></div></div>
+    <div class="grid-3 flip-cards" style="flex:1" data-flip-cards>
+      ${[
+        {cls:'c-std', ic:'i-chart',      tag:'✓ KLARNA',     tagColor:'var(--success)', body:'<p><b>2.3M chats/міс</b> замінили ~700 FTE за 2024. CSAT на рівні з human.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">klarna.com/press 2024</p>', lesson:'<b>Урок:</b> Customer service — простіший домен, слабший compliance. Публічна цифра на передодні IPO = аудитована. Для Loan Copilot HITL-гейтів буде вдвічі більше.'},
+        {cls:'c-std', ic:'i-dollar',     tag:'✓ DBS BANK',   tagColor:'var(--success)', body:'<p><b>SGD 500M (~$370M)</b> impact від AI/ML у 2023, стверджено Annual Report.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">dbs.com/annual-report 2023</p>', lesson:'<b>Урок:</b> 180M revenue uplift + 320M cost avoidance. 300+ use-cases, 800+ models. AI додає gross profit, не лише замінює людей.'},
+        {cls:'c-std', ic:'i-package',    tag:'✓ JPM COIN',    tagColor:'var(--success)', body:'<p>Blockchain+AI: $1B+/день обороту, задокументовано.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">jpmorgan.com/kinexys</p>', lesson:'<b>Урок:</b> AI + blockchain + regulated banking складаються в production (Siemens, BlackRock клієнти). Доказ для борду після DBS.'},
+        {cls:'c-out', ic:'i-alert-triangle', tag:'✗ AIR CANADA', tagColor:'var(--error)',   body:'<p><b>Бот вигадав політику</b> bereavement refund. BCCRT: бізнес відповідає за слова свого бота. $650 CAD.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">BCCRT 2024 · Moffatt v. Air Canada</p>', lesson:'<b>Урок:</b> Сума смішна, прецедент — ні. Common-law юрисдикції посилаються на Moffatt. Якщо copilot скаже «ставка 15%», а в контракті 22% — банк програє в суді.'},
+        {cls:'c-out', ic:'i-alert-triangle', tag:'✗ CHEVROLET',  tagColor:'var(--error)',   body:'<p>Dealer chatbot продав <b>Tahoe за $1</b> після prompt-injection. Немає guardrails на price commitments.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">декілька медіа · 2023</p>', lesson:'<b>Урок:</b> Price та legal commitment — side-effect, що потребує contract-validation tool. Не виводити ціну з безконтрольного LLM. Це Tier B trust shield.'},
+        {cls:'c-out', ic:'i-alert-triangle', tag:'✗ DPD UK',     tagColor:'var(--error)',   body:'<p>Бот <b>лаявся та критикував DPD</b> — вірусний Twitter. Вимкнули протягом дня.</p><p style="margin-top:0.4em; color:var(--text-dim); font-size:0.78em; font-family:var(--font-mono)">BBC · Jan 2024</p>', lesson:'<b>Урок:</b> Output filter не опціональний. 800k likes, BBC, down за 24 години. Три фейли мають спільний корінь: вивід без deterministic фільтру між LLM та клієнтом.'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag" style="color:${c.tagColor}"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em;color:${c.tagColor}"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body">${c.body}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag" style="color:${c.tagColor}">${c.tag}</div>
+              <div class="card-body" style="font-size:0.85em; line-height:1.5">${c.lesson}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
     </div>
     <div class="strip gate"><b>Pattern of fails:</b> відсутні guardrails на legal/price · немає citation discipline · не викладались adversarial tests · немає refusal patterns</div>
   </div>
@@ -1190,13 +1657,29 @@ SLIDES.push({ title:"Wins & Incidents", html:`
 SLIDES.push({ title:"Industry patterns", html:`
 <div class="slide">
   <div class="slide-title">Industry patterns · <span class="accent">не-grounding</span></div>
-  <div class="slide-subtitle">4 композиційні паттерни, які будемо складати у вебінарах 1–4</div>
+  <div class="slide-subtitle">4 композиційні паттерни, які будемо складати у вебінарах 1–4 · <span style="color:var(--accent)">натисни картку → when to use / avoid</span></div>
   <div class="content">
     <div class="grid-2" style="flex:1">
-      <div class="card c-std"><div class="card-tag">AGENTIC</div><div class="card-body"><p>LLM + loop + tools + memory. Автономне виконання з termination condition.</p><p style="margin-top:0.4em"><b>У нас:</b> кожен specialist — agentic всередині</p></div></div>
-      <div class="card c-sp"><div class="card-tag">MULTI-AGENT A2A</div><div class="card-body"><p>Один агент = одна роль. Спілкування — через контрактні повідомлення, не shared memory.</p><p style="margin-top:0.4em"><b>У нас:</b> Orchestrator + 7 specialists</p></div></div>
-      <div class="card c-gate"><div class="card-tag">INTENT ROUTING</div><div class="card-body"><p>Класифікатор вхідного turn у N категорій → route. Окрема легка модель (Fast / Small LLM).</p><p style="margin-top:0.4em"><b>У нас:</b> Intent agent → route table</p></div></div>
-      <div class="card c-out"><div class="card-tag">GUARDRAILS</div><div class="card-body"><p>Runtime перевірки всередині лупу: PII leak, prompt injection, output refusal, cost cap, rate.</p><p style="margin-top:0.4em"><b>У нас:</b> gateway → agent → evaluator — три рівні</p></div></div>
+      ${[
+        {cls:'c-std',  ic:'i-bot',           tag:'AGENTIC',           front:'<p>LLM + loop + tools + memory. Автономне виконання з termination condition.</p><p style="margin-top:0.4em"><b>У нас:</b> кожен specialist — agentic всередині</p>', back:'<p><b>Use when:</b> bounded tool scope, чіткий termination (ReAct, max N кроків).</p><p style="margin-top:0.3em"><b>Avoid when:</b> open-ended multi-step без evaluator — халюцинації мультиплікуються (3 кроки × 10% error = 27%).</p><p style="margin-top:0.3em"><b>Банк:</b> underwriter specialist робить PMT/PTI в loop зі schema-validated tools.</p>'},
+        {cls:'c-sp',   ic:'i-share',         tag:'MULTI-AGENT A2A',   front:'<p>Один агент = одна роль. Спілкування — через контрактні повідомлення, не shared memory.</p><p style="margin-top:0.4em"><b>У нас:</b> Orchestrator + 7 specialists</p>', back:'<p><b>Use when:</b> ролі сильно розмежовані (різні prompts, різні tools, різні SLO), 4+ agents.</p><p style="margin-top:0.3em"><b>Avoid when:</b> &lt;3 ролі — overhead orchestration не окупається.</p><p style="margin-top:0.3em"><b>Банк:</b> KYC, credit, underwriter — різні dataset, різні eval sets, різні owners.</p>'},
+        {cls:'c-gate', ic:'i-git-fork',      tag:'INTENT ROUTING',    front:'<p>Класифікатор вхідного turn у N категорій → route. Окрема легка модель (Fast / Small LLM).</p><p style="margin-top:0.4em"><b>У нас:</b> Intent agent → route table</p>', back:'<p><b>Use when:</b> багато topic entry-points, cost-sensitive — не викликати GPT-4 для класифікації "refund vs status".</p><p style="margin-top:0.3em"><b>Avoid when:</b> &lt;4 intent — if/else на regex дешевше.</p><p style="margin-top:0.3em"><b>Банк:</b> вхідний turn → intake / status / refund / dispute через ~70M модель (0.1¢/call).</p>'},
+        {cls:'c-out',  ic:'i-shield-check',  tag:'GUARDRAILS',        front:'<p>Runtime перевірки всередині лупу: PII leak, prompt injection, output refusal, cost cap, rate.</p><p style="margin-top:0.4em"><b>У нас:</b> gateway → agent → evaluator — три рівні</p>', back:'<p><b>3 рівні:</b> pre-prompt (PII mask, injection detect) → inline (schema, cost cap) → post-output (toxicity, refusal, pre-write evaluator).</p><p style="margin-top:0.3em"><b>Avoid:</b> guardrail як LLM — сам галюцинує. Deterministic rules спочатку.</p><p style="margin-top:0.3em"><b>Банк:</b> verify_before_send gate блокує договір якщо ставка ≠ underwriter verdict.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body">${c.front}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag">${c.tag}</div>
+              <div class="card-body" style="font-size:0.86em; line-height:1.5">${c.back}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
     </div>
     <div class="strip lilac"><b>Grounding patterns</b> — окреме меню (W2): RAG · GraphRAG · Semantic Layer · Direct tools · Wiki-KB · Long-context</div>
   </div>
@@ -1234,18 +1717,34 @@ SLIDES.push({ title:"Industry patterns", html:`
 SLIDES.push({ title:"W1 Theory", html:`
 <div class="slide">
   <div class="slide-title">Agents, decomposition, A2A · <span class="accent">8 концептів</span></div>
-  <div class="slide-subtitle">8 концептів, які архітектор має вміти захистити · без прив'язки до домену</div>
+  <div class="slide-subtitle">8 концептів, які архітектор має вміти захистити · без прив'язки до домену · <span style="color:var(--accent)">натисни → приклад + anti-pattern</span></div>
   <div class="content">
-    ${conceptGrid([
-      {cls:'c-std',  tag:'АГЕНТ',               def:'LLM + loop + tools + memory. Не "виклик" — цикл до termination condition.'},
-      {cls:'c-std',  tag:'AGENT LOOP',           def:'Reason → Act (tool) → Observe → Reason … до final або max_steps. <b>Детермінований halt</b> обов\'язковий.'},
-      {cls:'c-sp',   tag:'ДЕКОМПОЗИЦІЯ по РОЛЯХ',def:'1 агент = 1 роль (eligibility, risk, docs). <b>НЕ</b> по задачах — тоді вибухне в 50 агентів.'},
-      {cls:'c-sp',   tag:'ORCHESTRATOR vs SPECIALISTS',def:'Orchestrator — власник state + routes. Specialist — одна справа добре. Жодного S→S без orchestrator.'},
-      {cls:'c-gate', tag:'A2A MESSAGE',          def:'<code style="color:var(--accent);font-family:var(--font-mono);font-size:0.9em">{from, to, intent, correlation_id, payload, requires_reply}</code>. Схема — контракт.'},
-      {cls:'c-gate', tag:'COORDINATION COST',    def:'Кожен hop = +latency + контекст-дублювання + risk mis-routing. Зміряйте, перш ніж додавати агента.'},
-      {cls:'c-out',  tag:'КОЛИ ДІЛИТИ',          def:'Окремі data access · eval criteria · SLO · власники. Ні одне — тримай моноліт.'},
-      {cls:'c-out',  tag:'GUARDRAIL vs POLICY',  def:'Guardrail — runtime відмова всередині loop\'у. Policy — те, що кодифіковане у документі банку. РІЗНЕ.'},
-    ])}
+    <div class="concept-grid" style="flex:1">
+      ${[
+        {cls:'c-std',  ic:'i-bot',          tag:'АГЕНТ',                      front:'LLM + loop + tools + memory. Не "виклик" — цикл до termination condition.', back:'<p><b>Use when:</b> multi-step task з branching (6+ states).</p><p style="margin-top:0.25em"><b>Avoid:</b> one-shot Q&A — direct LLM call дешевше у 3-10×.</p><p style="margin-top:0.25em"><b>Банк:</b> credit_history specialist loops: consent → BKI pull → score parse → return.</p>'},
+        {cls:'c-std',  ic:'i-workflow',     tag:'AGENT LOOP',                 front:'Reason → Act (tool) → Observe → Reason … до final або max_steps. <b>Детермінований halt</b> обов\'язковий.', back:'<p><b>Halt:</b> max_steps=8 для underwriter, не 50; detect "same tool, same args двічі" → kill.</p><p style="margin-top:0.25em"><b>Anti-pattern:</b> без halt → infinite loop → $$$ bill. Chevrolet Tahoe-за-$1 почалося з loop без guardrail.</p><p style="margin-top:0.25em"><b>Банк:</b> loop_count у кожному trace, alert &gt; 5.</p>'},
+        {cls:'c-sp',   ic:'i-users',        tag:'ДЕКОМПОЗИЦІЯ по РОЛЯХ',       front:'1 агент = 1 роль (eligibility, risk, docs). <b>НЕ</b> по задачах — тоді вибухне в 50 агентів.', back:'<p><b>По ролях:</b> KYC, risk, docs → 3-7 agents total, кожен з власним prompt+eval+owner.</p><p style="margin-top:0.25em"><b>По задачах (anti):</b> kyc_sanctions, kyc_pep, kyc_watchlist... → 50 агентів, orchestrator захлинеться.</p><p style="margin-top:0.25em"><b>Банк:</b> наш Loan Copilot — 7 ролей, не 7×N задач.</p>'},
+        {cls:'c-sp',   ic:'i-git-fork',     tag:'ORCHESTRATOR vs SPECIALISTS', front:'Orchestrator — власник state + routes. Specialist — одна справа добре. Жодного S→S без orchestrator.', back:'<p><b>Orchestrator:</b> state machine (детермінований router), НЕ LLM — зберігає correlation_id, hop history.</p><p style="margin-top:0.25em"><b>Specialist:</b> бачить лише свій scope + свої tools, не знає про інших.</p><p style="margin-top:0.25em"><b>Банк:</b> Loan supervisor = LangGraph FSM; 7 specialists підпорядковані, S→S прямо = заборонено.</p>'},
+        {cls:'c-gate', ic:'i-share',        tag:'A2A MESSAGE',                 front:'<code style="color:var(--accent);font-family:var(--font-mono);font-size:0.9em">{from, to, intent, correlation_id, payload, requires_reply}</code>. Схема — контракт.', back:'<p><b>Контракт включає:</b> schema_version, timeout, retry_policy, idempotency_key.</p><p style="margin-top:0.25em"><b>Чому НЕ shared memory:</b> легше debug (replay з логу), легше eval (deterministic replay).</p><p style="margin-top:0.25em"><b>Банк:</b> correlation_id = loan_id → трасування через всі agents + audit for НБУ.</p>'},
+        {cls:'c-gate', ic:'i-dollar',       tag:'COORDINATION COST',           front:'Кожен hop = +latency + контекст-дублювання + risk mis-routing. Зміряйте, перш ніж додавати агента.', back:'<p><b>Rule-of-thumb:</b> +1 hop = +500ms + 2× tokens + ~10% mis-route probability.</p><p style="margin-top:0.25em"><b>Метрика:</b> accuracy_delta vs cost_delta проти monolith baseline. Якщо split не дає accuracy wins → не роби.</p><p style="margin-top:0.25em"><b>Банк:</b> щомісячний retrospection — чи виправданий кожен specialist.</p>'},
+        {cls:'c-out',  ic:'i-scale',        tag:'КОЛИ ДІЛИТИ',                 front:'Окремі data access · eval criteria · SLO · власники. Ні одне — тримай моноліт.', back:'<p><b>4 критерії:</b> різний data scope · різний eval set · різний SLO · різний owner.</p><p style="margin-top:0.25em"><b>Правило:</b> 2+ критерії "так" → split; 0-1 → моноліт.</p><p style="margin-top:0.25em"><b>Банк:</b> credit_history має власний SLO (5s, BKI), свій eval set (300 cases) → окремий specialist.</p>'},
+        {cls:'c-out',  ic:'i-shield-check', tag:'GUARDRAIL vs POLICY',         front:'Guardrail — runtime відмова всередині loop\'у. Policy — те, що кодифіковане у документі банку. РІЗНЕ.', back:'<p><b>Guardrail:</b> runtime код (regex, LLM-judge, deterministic). Blocks у реальному часі.</p><p style="margin-top:0.25em"><b>Policy:</b> PDF у legal department. Повільно оновлюється, не виконується автоматично.</p><p style="margin-top:0.25em"><b>Банк:</b> "ставка &gt; 25% річних" — guardrail (блок); "максимальна ефективна ставка" — Policy у НБУ Постанові 54.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body">${c.front}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag">${c.tag}</div>
+              <div class="card-body" style="font-size:0.86em; line-height:1.5">${c.back}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
     <div class="strip"><b>ТЕСТ:</b> якщо не можете в 1 реченні пояснити кожен концепт своєму CTO — ви його не знаєте.</div>
   </div>
   ${gloss([["A2A","Agent-to-Agent"],["SLO","Service-Level Objective"]])}
@@ -1278,11 +1777,11 @@ SLIDES.push({
           <div class="card c-std">
             <div class="card-tag">BUSINESS CONTEXT</div>
             <div class="card-body">
-              <p>Український банк · середній, retail-focused · ~500k споживчих заявок на рік</p>
+              <p>Український retail-банк рівня PrivatBank · <b>~5M споживчих заявок/рік</b> через Privat24 (підмножина 36M+ усіх онлайн-заявок)</p>
               <br>
-              <p><b>Baseline сьогодні:</b> 20–45 хв на заявку (традиційний flow), 60–75% drop-off на етапі KYC, $5–20 на заявку</p>
+              <p><b>Baseline сьогодні:</b> 5–15 хв у digital flow (Privat24), 25–45 хв у відділенні · 25–40% drop-off (нові клієнти, digital) · <b>cost/case $2–5</b> (digital) або $8–15 (manual/branch)</p>
               <br>
-              <p><b>Цільовий KPI після запуску copilot:</b> 3–8 хв first-decision · − 30% abandonment rate (кінутих заявок) · cost/case &lt; $3</p>
+              <p><b>Цільовий KPI після запуску copilot:</b> 2–5 хв first-decision · abandonment &lt; 20% · <b>cost/case &lt; $1.50</b></p>
             </div>
           </div>
           <div class="card c-sp">
@@ -1368,27 +1867,27 @@ SLIDES.push({
       <div class="content">
         <div class="stat-grid c6" style="flex:1">
           <div class="stat-card">
-            <div class="stat-label">PRIVATBANK · DIGITAL LOANS</div>
+            <div class="stat-label">PRIVAT24 · ALL APPS</div>
             <div class="stat-value">36M+</div>
-            <div class="stat-desc">онлайн-заявок/рік через Privat24 (2023)</div>
-            <div class="stat-src">privatbank.ua/press</div>
+            <div class="stat-desc">усіх онлайн-заявок/рік (картки · депозити · платежі · кредити)</div>
+            <div class="stat-src">privatbank.ua/press 2023</div>
           </div>
           <div class="stat-card" style="border-left-color:var(--box-sp)">
-            <div class="stat-label">TRADITIONAL FLOW</div>
-            <div class="stat-value" style="color:var(--box-sp)">20-45хв</div>
-            <div class="stat-desc">на заявку · operator + manual KYC</div>
-            <div class="stat-src">McKinsey retail banking 2023</div>
+            <div class="stat-label">CONSUMER LOANS SCOPE</div>
+            <div class="stat-value" style="color:var(--box-sp)">~5M</div>
+            <div class="stat-desc">заявок/рік на споживчі кредити — наш фокус</div>
+            <div class="stat-src">модельна оцінка · 14k/день</div>
           </div>
           <div class="stat-card" style="border-left-color:var(--box-gate)">
             <div class="stat-label">COST / APPLICATION</div>
-            <div class="stat-value" style="color:var(--box-gate)">$5-20</div>
-            <div class="stat-desc">у традиційному процесі (OpEx)</div>
-            <div class="stat-src">Deloitte digital lending</div>
+            <div class="stat-value" style="color:var(--box-gate)">$2–5</div>
+            <div class="stat-desc">digital (existing client) · $8–15 branch/manual</div>
+            <div class="stat-src">Deloitte digital lending · industry</div>
           </div>
           <div class="stat-card" style="border-left-color:var(--box-out)">
             <div class="stat-label">DROP-OFF RATE</div>
-            <div class="stat-value" style="color:var(--box-out)">60-75%</div>
-            <div class="stat-desc">на KYC / docs stage (industry)</div>
+            <div class="stat-value" style="color:var(--box-out)">25–40%</div>
+            <div class="stat-desc">digital first-time; 50%+ у branch flow</div>
             <div class="stat-src">Mitek digital identity 2023</div>
           </div>
           <div class="stat-card" style="border-left-color:var(--lilac)">
@@ -1405,7 +1904,7 @@ SLIDES.push({
           </div>
         </div>
         <div class="strip">
-          <b>Інтерпретація:</b> якщо AI copilot скорочує 20хв → 5хв на 500k заявках/рік = 125k human-hours saved. При $15/год loaded cost = <b style="color:var(--accent)">~$1.9M/рік</b> лише на operator time.
+          <b>Інтерпретація:</b> якщо AI copilot скорочує 10 хв → 3 хв на 5M consumer-loan заявках/рік = <b>~580k human-hours saved</b>. При $15/год loaded cost = <b style="color:var(--accent)">~$8.7M/рік</b> лише на operator time; +cost/case $3.50 → $1.50 = ще ~$10M/рік OpEx.
         </div>
       </div>
       ${gloss([["FTE","Full-Time Equivalent"],["KYC","Know Your Customer"],["OpEx","Operational Expenditure"]])}
@@ -1433,23 +1932,48 @@ SLIDES.push({
 SLIDES.push({ title:"Loan journey", html:`
 <div class="slide">
   <div class="slide-title">Loan journey · <span class="accent">12 states</span></div>
-  <div class="slide-subtitle">Від першого «hello» до e-signed контракту · три pauses, два conditional-гейти, один evaluator pre-write gate</div>
+  <div class="slide-subtitle">Від першого «hello» до e-signed контракту · три pauses, два conditional-гейти, один evaluator pre-write gate · <span style="color:var(--accent)">натисни на вузол → деталі</span></div>
   <div class="content">
-    <div class="flow flow-big">
-      <div class="flow-node c-std"><div class="num">01</div><div class="kind">assistant</div><div class="name">intake</div><div class="anno">greet + 8 fields</div></div>
-      <div class="flow-node c-sp"><div class="num">02</div><div class="kind">hitl</div><div class="name">docs_requested</div><div class="anno">⏸ 24–48г</div></div>
-      <div class="flow-node c-std"><div class="num">03</div><div class="kind">tool</div><div class="name">docs_processing</div><div class="anno">OCR + extract</div></div>
-      <div class="flow-node c-gate"><div class="num">04</div><div class="kind">hitl</div><div class="name">analyst_review</div><div class="anno">❖ OCR&lt;0.85</div></div>
-      <div class="flow-node c-std"><div class="num">05</div><div class="kind">assistant</div><div class="name">kyc</div><div class="anno">sanctions + PEP</div></div>
-      <div class="flow-node c-std"><div class="num">06</div><div class="kind">assistant</div><div class="name">credit_history</div><div class="anno">score 300–850</div></div>
-    </div>
-    <div class="flow flow-big">
-      <div class="flow-node c-std"><div class="num">07</div><div class="kind">assistant</div><div class="name">underwriter</div><div class="anno">4-tier policy</div></div>
-      <div class="flow-node c-gate"><div class="num">08</div><div class="kind">hitl</div><div class="name">committee_review</div><div class="anno">❖ band=gray</div></div>
-      <div class="flow-node c-sp"><div class="num">09</div><div class="kind">hitl</div><div class="name">offer</div><div class="anno">⏸ accept/reject</div></div>
-      <div class="flow-node c-std"><div class="num">10</div><div class="kind">tool</div><div class="name">contract_draft</div><div class="anno">template + reserve</div></div>
-      <div class="flow-node c-out"><div class="num">11</div><div class="kind">evaluator</div><div class="name">verify_before_send</div><div class="anno">pre-write gate</div></div>
-      <div class="flow-node c-sp"><div class="num">12</div><div class="kind">hitl</div><div class="name">sign_awaiting</div><div class="anno">⏸ e-sign Дія</div></div>
+    <div class="flow-canvas" data-flow>
+      <svg class="flow-wires" aria-hidden="true"></svg>
+      <div class="flow-grid flow-grid-snake-6">
+        ${[
+          {n:'01',k:'assistant',ic:'i-bot',       name:'intake',             anno:'greet + 8 fields',  c:'std',  row:1, col:1, back:"LLM вітає клієнта, збирає <b>8 обов'язкових полів</b> (сума, строк, дохід, ІПН тощо), валідує формат."},
+          {n:'02',k:'hitl',     ic:'i-timer',     name:'docs_requested',     anno:'<span class="pause">⏸ 24–48г</span>', c:'sp',  row:1, col:2, back:'Перша тривала <b>durable pause</b>. Workflow засинає, стан у БД. Чекає upload паспорта / виписки.'},
+          {n:'03',k:'tool',     ic:'i-file-text', name:'docs_processing',    anno:'OCR + extract',     c:'std', row:1, col:3, back:'OCR-pipeline зчитує документи, витягує структуровані поля (ПІБ, дата народження, адреса).'},
+          {n:'04',k:'hitl',     ic:'i-id-card',   name:'analyst_review',     anno:'<span class="cond">❖ OCR&lt;0.85</span>', c:'gate', row:1, col:4, back:'<b>Умовний гейт</b>: спрацьовує лише коли OCR confidence &lt; 0.85. Happy path пропускає цей вузол.'},
+          {n:'05',k:'assistant',ic:'i-shield-check',name:'kyc',              anno:'sanctions + PEP',   c:'std', row:1, col:5, back:'Санкційні реєстри РНБО, список розшуку, перевірка на publicly exposed persons (PEP).'},
+          {n:'06',k:'assistant',ic:'i-chart',     name:'credit_history',     anno:'score 300–850',     c:'std', row:1, col:6, back:'<b>Consent gate</b> → запит у бюро кредитних історій → скоринг-бал 300–850.'},
+          {n:'07',k:'assistant',ic:'i-scale',     name:'underwriter',        anno:'4-tier policy',     c:'std', row:2, col:6, back:'Детермінований розрахунок <b>PMT / PTI</b>, визначення грейду Tier A/B/C/D за policy matrix.'},
+          {n:'08',k:'hitl',     ic:'i-users',     name:'committee_review',   anno:'<span class="cond">❖ band=gray</span>', c:'gate', row:2, col:5, back:"<b>Умовний гейт</b> кредитного комітету. Активується тільки у «сірій зоні» (Tier C) — потрібен голос underwriter'а."},
+          {n:'09',k:'hitl',     ic:'i-handshake', name:'offer',              anno:'<span class="pause">⏸ accept/reject</span>', c:'sp',  row:2, col:4, back:'Персональна пропозиція. <b>Durable pause</b> до 7 днів чекає accept/reject клієнта.'},
+          {n:'10',k:'tool',     ic:'i-file-text', name:'contract_draft',     anno:'template + reserve',c:'std', row:2, col:3, back:'Генерує текст договору за банківським шаблоном, <b>резервує кредитний ліміт</b> у backend.'},
+          {n:'11',k:'evaluator',ic:'i-shield-check',name:'verify_before_send',anno:'pre-write gate',    c:'out', row:2, col:2, back:'<b>Pre-write evaluator gate</b>. Звіряє ставку, ліміт, розбіжності. Fail → блок + legal escalation.'},
+          {n:'12',k:'hitl',     ic:'i-signature', name:'sign_awaiting',      anno:'<span class="pause">⏸ e-sign Дія</span>', c:'sp',  row:2, col:1, back:'Фінальна <b>durable pause</b>. КЕП через Дія.Підпис → webhook → disburse.'}
+        ].map(s=>`
+          <div class="flow-card c-${s.c}" style="--k:var(--box-${s.c}); grid-column:${s.col}; grid-row:${s.row}" data-kind="${s.k}" data-idx="${s.n}" tabindex="0" role="button" aria-label="Flip card ${s.n} ${s.name}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+            <div class="flow-card-inner">
+              <div class="flow-face flow-face-front">
+                <div class="fc-head">
+                  <span class="fc-num">${s.n}</span>
+                  <svg class="fc-ico"><use href="#${s.ic}"/></svg>
+                  <span class="fc-kind">${s.k}</span>
+                </div>
+                <div class="fc-name">${s.name}</div>
+                <div class="fc-anno">${s.anno}</div>
+              </div>
+              <div class="flow-face flow-face-back">
+                <div class="fc-back-head">
+                  <svg class="fc-ico"><use href="#${s.ic}"/></svg>
+                  <span class="fc-back-title">${s.n} · ${s.name}</span>
+                </div>
+                <div class="fc-back-body">${s.back}</div>
+                <div class="fc-back-hint">← back</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
     </div>
     <div class="grid-4" style="margin-top:0.5em">
       <div class="strip lilac"><b>⏸ wait_for</b> event-driven resume, state на диску</div>
@@ -1457,6 +1981,7 @@ SLIDES.push({ title:"Loan journey", html:`
       <div class="strip" style="border-left-color:var(--box-out)"><b style="color:var(--box-out)">evaluator</b> pre-write gate (verify_before_send)</div>
       <div class="strip"><b>idempotency</b> (run_id, node, event_id)</div>
     </div>
+    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.08); margin-top:0.3em"><b style="color:var(--accent)">🎬 LIVE · CodeMie demo:</b> показуємо Orchestrator + Intake assistant у CodeMie. Повний Multi-agent + ContractAgent — у домашнє · <code>module_1_agents/05-exercise.md</code>.</div>
   </div>
   ${gloss([["HITL","Human-in-the-loop"],["OCR","Optical Character Recognition"],["PII","Personally Identifiable Information"]])}
 </div>`, notes:`
@@ -1542,6 +2067,7 @@ SLIDES.push({ title:"W2 Agenda", html:`
   <div class="slide-title">Webinar 2 · <span class="accent">agenda</span></div>
   <div class="slide-subtitle">2 години · теорія (grounding + tools + gateway) → практика (Eligibility + Risk) → interactive (tool canvas)</div>
   <div class="content">
+    <div class="strip" style="border-left-color:var(--box-sp); background:rgba(192,132,252,0.08)"><b style="color:var(--box-sp)">🏗 WHAT WE ADD THIS WEEK (vs W1 mocks):</b> hybrid RAG на 40 POL/SOP · 3 real tools (kyc.lookup, credit_history.pull з Consent Gate, risk.score) · LLM Gateway (DIAL/Azure EU) · citation discipline · <b>end-state:</b> Loan Copilot більше не галюцинує політики, UBKI недоступний без consent_id — <code>module_2_grounding/</code></div>
     <div class="split-22">
       <div class="card c-std">
         <div class="card-tag">ТЕОРІЯ · GROUNDING & TOOLS</div>
@@ -1636,56 +2162,31 @@ SLIDES.push({ title:"W2 Theory", html:`
 SLIDES.push({ title:"Grounding menu", html:`
 <div class="slide">
   <div class="slide-title">Grounding menu · <span class="accent">6 архітектурних патернів</span></div>
-  <div class="slide-subtitle">Вибір тактики — за формою даних, потребою у свіжості та точністю, не «бо популярно»</div>
+  <div class="slide-subtitle">Вибір тактики — за формою даних, потребою у свіжості та точністю, не «бо популярно» · <span style="color:var(--accent)">натисни → trade-offs</span></div>
   <div class="content">
     <div class="grid-3" style="flex:1">
-      <div class="card c-std">
-        <div class="card-tag">1 · VECTOR / HYBRID RAG</div>
-        <div class="card-body">
-          <p>Чанкінг → embeddings + BM25 → hybrid retrieval → cite. <b>Для:</b> неструктурованих текстів (SOP, кредитні регламенти, політики банку).</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">Qdrant · Chroma · Azure AI Search · LlamaIndex</p>
+      ${[
+        {cls:'c-std',  ic:'i-database',    tag:'1 · VECTOR / HYBRID RAG',    front:'<p>Чанкінг → embeddings + BM25 → hybrid retrieval → cite. <b>Для:</b> неструктурованих текстів (SOP, кредитні регламенти, політики банку).</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">Qdrant · Chroma · Azure AI Search · LlamaIndex</p>', back:'<p><b>Strength:</b> semantic + keyword fusion ловить і синоніми, і exact-match (назви продуктів).</p><p style="margin-top:0.25em"><b>Weakness:</b> нема структури → ієрархія втрачається, numeric reasoning слабкий.</p><p style="margin-top:0.25em"><b>Банк:</b> кредитні регламенти 50-200 стор. — chunking 500 tokens + reranker, cite точний пункт.</p>'},
+        {cls:'c-gate', ic:'i-chart',       tag:'2 · SEMANTIC LAYER / SQL',    front:'<p>Curated metrics & schema над реляційними БД / DWH (Text-to-SQL). <b>Для:</b> числових розрахунків, балансів, транзакцій, скорингових таблиць.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">dbt Semantic Layer · Cube.dev · Vanna.ai · Snowflake</p>', back:'<p><b>Strength:</b> exact numbers, auditable SQL, RBAC через column grants.</p><p style="margin-top:0.25em"><b>Weakness:</b> maintenance schema+semantic layer; LLM рве SQL на складних joins.</p><p style="margin-top:0.25em"><b>Банк:</b> «залишок на картці», «середня транзакція за 3 міс» — через curated metrics, не raw SQL.</p>'},
+        {cls:'c-sp',   ic:'i-file-text',   tag:'3 · HIERARCHICAL / PAGEINDEX', front:'<p>Tree-based ToC (Зміст) навігація зверху-вниз без втрати ієрархії. <b>Для:</b> складних нормативів НБУ, законів, багаторівневих договорів.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">PageIndex (Vectify AI) · Docling · LlamaIndex Tree</p>', back:'<p><b>Strength:</b> зберігає «Стаття 10, п.3, пп.2» → цитування правильне.</p><p style="margin-top:0.25em"><b>Weakness:</b> overhead побудови ToC, повільніше за flat RAG.</p><p style="margin-top:0.25em"><b>Банк:</b> НБУ Постанова №351 (400+ стор., 7 рівнів вкладеності) — flat RAG тут провалюється.</p>'},
+        {cls:'c-out',  ic:'i-package',     tag:'4 · LONG-CONTEXT + CACHE',   front:'<p>Завантаження повного корпусу (document corpus) з prompt caching. <b>Для:</b> корпусу, що вміщується у вікно (&lt; ~100–150 стор.) і рідко оновлюється; 80% знижка вартості.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">Enterprise Prompt Caching (Gateway / Cloud Cache)</p>', back:'<p><b>Strength:</b> нуль infra — ніякого vector DB, embeddings, reranker. Prompt cache 80% знижка на input.</p><p style="margin-top:0.25em"><b>Weakness:</b> hard limit вікна (~200k tokens); оновлення корпусу → cache miss.</p><p style="margin-top:0.25em"><b>Банк:</b> малий product catalog (30 кредитних продуктів × 2 стор.) — long-context виграє.</p>'},
+        {cls:'c-std',  ic:'i-wrench',      tag:'5 · DIRECT TOOLS & CODE',    front:'<p>Виклик API систем або виконання Python/DuckDB для формул. <b>Для:</b> live-даних (core banking) + точних розрахунків (ануїтет, PTI, DTI).</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">OpenAI function calling · MCP · DuckDB in-process</p>', back:'<p><b>Strength:</b> live дані (не stale), deterministic math — ніяких LLM-халюцинацій на обчисленнях.</p><p style="margin-top:0.25em"><b>Weakness:</b> latency кожного tool-call, side-effects → потрібні idempotency + RBAC.</p><p style="margin-top:0.25em"><b>Банк:</b> PMT (ануїтет), PTI, баланс картки — Python/DuckDB, ніколи LLM.</p>'},
+        {cls:'c-sp',   ic:'i-share',       tag:'6 · GRAPHRAG',               front:'<p>Knowledge Graph сутностей над документами; traversal зв’язків. <b>Для:</b> мереж бенефіціарів (UBO), пов\'язаних осіб, санкцій PEP.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">Microsoft GraphRAG · Nano-GraphRAG · Neo4j GenAI</p>', back:'<p><b>Strength:</b> multi-hop reasoning («компанія X належить Y, що входить до санкційного списку»).</p><p style="margin-top:0.25em"><b>Weakness:</b> graph build cost, схема сутностей потребує курування.</p><p style="margin-top:0.25em"><b>Банк:</b> KYC/UBO (Ultimate Beneficial Owner) networks, PEP зв\'язки — flat RAG не бачить relationships.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body">${c.front}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag">${c.tag}</div>
+              <div class="card-body" style="font-size:0.82em; line-height:1.5">${c.back}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div class="card c-gate">
-        <div class="card-tag">2 · SEMANTIC LAYER / SQL</div>
-        <div class="card-body">
-          <p>Curated metrics & schema над реляційними БД / DWH (Text-to-SQL). <b>Для:</b> числових розрахунків, балансів, транзакцій, скорингових таблиць.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">dbt Semantic Layer · Cube.dev · Vanna.ai · Snowflake</p>
-        </div>
-      </div>
-
-      <div class="card c-sp">
-        <div class="card-tag">3 · HIERARCHICAL / PAGEINDEX</div>
-        <div class="card-body">
-          <p>Tree-based ToC (Зміст) навігація зверху-вниз без втрати ієрархії. <b>Для:</b> складних нормативів НБУ, законів, багаторівневих договорів.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">PageIndex (Vectify AI) · Docling · LlamaIndex Tree</p>
-        </div>
-      </div>
-
-      <div class="card c-out">
-        <div class="card-tag">4 · LONG-CONTEXT + CACHE</div>
-        <div class="card-body">
-          <p>Завантаження повного корпусу (document corpus) з prompt caching. <b>Для:</b> корпусу, що вміщується у вікно (&lt; ~100–150 стор.) і рідко оновлюється; 80% знижка вартості.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">Enterprise Prompt Caching (Gateway / Cloud Cache)</p>
-        </div>
-      </div>
-
-      <div class="card c-std">
-        <div class="card-tag">5 · DIRECT TOOLS & CODE</div>
-        <div class="card-body">
-          <p>Виклик API систем або виконання Python/DuckDB для формул. <b>Для:</b> live-даних (core banking) + точних розрахунків (ануїтет, PTI, DTI).</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">OpenAI function calling · MCP · DuckDB in-process</p>
-        </div>
-      </div>
-
-      <div class="card c-sp">
-        <div class="card-tag">6 · GRAPHRAG</div>
-        <div class="card-body">
-          <p>Knowledge Graph сутностей над документами; traversal зв’язків. <b>Для:</b> мереж бенефіціарів (UBO), пов'язаних осіб, санкцій PEP.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.3em; font-style:italic">Microsoft GraphRAG · Nano-GraphRAG · Neo4j GenAI</p>
-        </div>
-      </div>
+      `).join('')}
     </div>
     <div class="strip">
       <b>Типова композиція для банку:</b> #1 Hybrid RAG (регламенти) + #2 Semantic Layer (транзакції/баланси) + #5 Direct Tools (core banking). #3 PageIndex і #6 GraphRAG — спеціалізовані розширення для складної нормативки та зв’язків.
@@ -1782,56 +2283,31 @@ SLIDES.push({ title:"RAG Control Loops", html:`
 SLIDES.push({ title:"Advanced RAG", html:`
 <div class="slide">
   <div class="slide-title">Advanced RAG · <span class="accent">indexing & retrieval ladder</span></div>
-  <div class="slide-subtitle">Загальні техніки · кожна сходинка додає cost + latency, але повертає relevance</div>
+  <div class="slide-subtitle">Загальні техніки · кожна сходинка додає cost + latency, але повертає relevance · <span style="color:var(--accent)">натисни → cost / win / коли</span></div>
   <div class="content">
     <div class="grid-2" style="flex:1">
-      <div class="card c-std">
-        <div class="card-tag">1 · HYBRID RETRIEVAL</div>
-        <div class="card-body">
-          <p><b>BM25 + dense паралельно → RRF merge.</b> Змішаний інтент: точні терміни, ІПН, номери постанов НБУ + семантичний парафраз.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">Elasticsearch · Qdrant · Weaviate · Reciprocal Rank Fusion</p>
+      ${[
+        {cls:'c-std',  ic:'i-git-fork',   tag:'1 · HYBRID RETRIEVAL',       front:'<p><b>BM25 + dense паралельно → RRF merge.</b> Змішаний інтент: точні терміни, ІПН, номери постанов НБУ + семантичний парафраз.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">Elasticsearch · Qdrant · Weaviate · Reciprocal Rank Fusion</p>', back:'<p><b>Cost:</b> 2× queries (BM25 + dense), ~50–100ms latency.</p><p style="margin-top:0.25em"><b>Win:</b> ~+30% recall на запитах з точними кодами («Постанова НБУ №351»).</p><p style="margin-top:0.25em"><b>Deploy order:</b> ПЕРШОЮ. Найдешевший win у ladder. Без цього #4 rerank marnie тратиш $.</p>'},
+        {cls:'c-sp',   ic:'i-file-text',  tag:'2 · CONTEXTUAL RETRIEVAL',   front:'<p><b>LLM препендить doc-level контекст до кожного чанка.</b> Чанки не втрачають сенс без назви розділу/суб\'єкта (скорочує пропуски на 40%).</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">Anthropic Contextual Retrieval (2024) · LlamaIndex</p>', back:'<p><b>Cost:</b> LLM call per chunk ПІД ЧАС індексації (one-time ~$0.01/chunk на Haiku).</p><p style="margin-top:0.25em"><b>Win:</b> query-time latency = 0; -40% retrieval miss. З #4 rerank → -49% miss (Anthropic paper).</p><p style="margin-top:0.25em"><b>Deploy order:</b> другою — під час next re-index. Prompt-cached doc для батчу чанків.</p>'},
+        {cls:'c-gate', ic:'i-package',    tag:'3 · COLBERT / LATE INTERACTION', front:'<p><b>Токен-рівневі ембедінги та матричне порівняння (MaxSim).</b> Критично не втратити точні номери статей, постанов чи технічні параметри.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">ColPali · Jina-ColBERT · Stanford ColBERTv2 · Vespa</p>', back:'<p><b>Cost:</b> 5–10× storage (per-token vectors), potreбує спеціалізованої БД (Vespa), складна операційна модель.</p><p style="margin-top:0.25em"><b>Win:</b> exact token-level matching — критично для «Ст. 10, п.3».</p><p style="margin-top:0.25em"><b>Deploy order:</b> ТІЛЬКИ якщо #1+#2+#4 не дають precision на точні коди. Overkill для 90% банк кейсів.</p>'},
+        {cls:'c-std',  ic:'i-chart',      tag:'4 · CROSS-ENCODER RERANK',   front:'<p><b>Retrieve top-K кандидатів, точний re-ranking моделлю до top-N.</b> Precision важливіша за latency; великий початковий candidate pool.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">BGE-reranker · Cohere Rerank · FlashRank</p>', back:'<p><b>Cost:</b> ~$1 на 1000 reranked docs (Cohere); +100–200ms latency.</p><p style="margin-top:0.25em"><b>Win:</b> precision@5 ↑ на 15-25%. Можеш retrieve top-50 → rerank → feed top-5 у prompt.</p><p style="margin-top:0.25em"><b>Deploy order:</b> ДРУГОЮ після #1. Pair with #1+#2 — golden trio покриває 85% enterprise кейсів.</p>'},
+        {cls:'c-sp',   ic:'i-workflow',   tag:'5 · RAPTOR SUMMARY TREES',   front:'<p><b>Рекурсивна кластеризація та сумаризація чанків у дерево.</b> Відповідає на високорівневі концептуальні питання («яка загальна стратегія ризику?»).</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">RAPTOR (ICLR 2024) · LlamaIndex Recursive Retriever</p>', back:'<p><b>Cost:</b> HIGH за індексації — O(N log N) LLM calls для tree summaries. Re-build при 10%+ оновленнях.</p><p style="margin-top:0.25em"><b>Win:</b> «які загальні принципи кредитної політики?» — на chunk-level такі питання провалюються.</p><p style="margin-top:0.25em"><b>Deploy order:</b> ТІЛЬКИ для holistic / high-level Q (CRO queries). Specific lookup — звичайний RAG.</p>'},
+        {cls:'c-out',  ic:'i-share',      tag:'6 · QUERY REWRITE / HYDE',   front:'<p><b>Гіпотетична відповідь (HyDE) або декомпозиція на підзапити.</b> Короткі/неоднозначні запити; ліквідує термінологічний розрив між юзером і SOP.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">HyDE · Multi-Query · RAG-Fusion · Step-back Prompting</p>', back:'<p><b>Cost:</b> +1 LLM call per user query (query rewrite), +300–500ms latency на критичному path.</p><p style="margin-top:0.25em"><b>Win:</b> ~+20% recall на коротких/розмовних запитах («як оплатити»).</p><p style="margin-top:0.25em"><b>Deploy order:</b> ОСТАННЬОЮ. Спочатку чини retrieval (#1-#4). Rewrite — коли user queries структурно поганенькі.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body">${c.front}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag">${c.tag}</div>
+              <div class="card-body" style="font-size:0.82em; line-height:1.45">${c.back}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div class="card c-sp">
-        <div class="card-tag">2 · CONTEXTUAL RETRIEVAL</div>
-        <div class="card-body">
-          <p><b>LLM препендить doc-level контекст до кожного чанка.</b> Чанки не втрачають сенс без назви розділу/суб'єкта (скорочує пропуски на 40%).</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">Anthropic Contextual Retrieval (2024) · LlamaIndex</p>
-        </div>
-      </div>
-
-      <div class="card c-gate">
-        <div class="card-tag">3 · COLBERT / LATE INTERACTION</div>
-        <div class="card-body">
-          <p><b>Токен-рівневі ембедінги та матричне порівняння (MaxSim).</b> Критично не втратити точні номери статей, постанов чи технічні параметри.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">ColPali · Jina-ColBERT · Stanford ColBERTv2 · Vespa</p>
-        </div>
-      </div>
-
-      <div class="card c-std">
-        <div class="card-tag">4 · CROSS-ENCODER RERANK</div>
-        <div class="card-body">
-          <p><b>Retrieve top-K кандидатів, точний re-ranking моделлю до top-N.</b> Precision важливіша за latency; великий початковий candidate pool.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">BGE-reranker · Cohere Rerank · FlashRank</p>
-        </div>
-      </div>
-
-      <div class="card c-sp">
-        <div class="card-tag">5 · RAPTOR SUMMARY TREES</div>
-        <div class="card-body">
-          <p><b>Рекурсивна кластеризація та сумаризація чанків у дерево.</b> Відповідає на високорівневі концептуальні питання («яка загальна стратегія ризику?»).</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">RAPTOR (ICLR 2024) · LlamaIndex Recursive Retriever</p>
-        </div>
-      </div>
-
-      <div class="card c-out">
-        <div class="card-tag">6 · QUERY REWRITE / HYDE</div>
-        <div class="card-body">
-          <p><b>Гіпотетична відповідь (HyDE) або декомпозиція на підзапити.</b> Короткі/неоднозначні запити; ліквідує термінологічний розрив між юзером і SOP.</p>
-          <p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">HyDE · Multi-Query · RAG-Fusion · Step-back Prompting</p>
-        </div>
-      </div>
+      `).join('')}
     </div>
     <div class="strip">
       <b>Rule of thumb для enterprise:</b> стартувати з #1 Hybrid + #2 Contextual chunking + #4 Cross-encoder rerank. Ця трійка закриває 85% проблем точності без ускладнення агентного лоопу.
@@ -1855,11 +2331,12 @@ SLIDES.push({ title:"Advanced RAG", html:`
 SLIDES.push({ title:"Vector Storage & DLS", html:`
 <div class="slide">
   <div class="slide-title">Vector storage & DLS · <span class="accent">топологія баз та безпека доступу</span></div>
-  <div class="slide-subtitle">Підводка: один копілот обслуговує різні ролі (клієнт, оператор, андеррайтер) · чому захист даних (DLS) має бути вбудований прямо у векторний індекс</div>
+  <div class="slide-subtitle">Підводка: один копілот обслуговує різні ролі (клієнт, оператор, андеррайтер) · чому захист даних (DLS) має бути вбудований прямо у векторний індекс · <span style="color:var(--accent)">натисни картку → decision helper</span></div>
   <div class="content">
     <div class="split-22">
-      <div class="card c-std">
-        <div class="card-tag">ТОПОЛОГІЯ СХОВИЩ · ДЕ ЖИВУТЬ ВЕКТОРИ</div>
+      <div class="card c-std flip-card" tabindex="0" role="button" aria-label="Flip storage topology" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+        <div class="flip-card-inner"><div class="flip-card-face flip-card-front">
+        <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#i-database"/></svg>ТОПОЛОГІЯ СХОВИЩ · ДЕ ЖИВУТЬ ВЕКТОРИ</div>
         <div class="card-body" style="font-size:0.85em; line-height:1.6">
           <p><b style="color:var(--accent)">1. pgvector (PostgreSQL) — Дефолт №1 (до 2–5 млн векторів):</b><br>
           Вже сертифікований CISO банку · нуль нових ліцензій у K8s · повні ACID-транзакції разом із даними заявки · стандартні репліки та бекапи DBA.</p>
@@ -1871,10 +2348,23 @@ SLIDES.push({ title:"Vector Storage & DLS", html:`
             <b>HNSW-індекс</b> (<i>Hierarchical Navigable Small World</i>): багатошаровий графовий індекс у RAM для надшвидкого пошуку за <b>O(log N)</b> замість перебору мільйона записів.
           </div>
         </div>
+        </div>
+        <div class="flip-card-face flip-card-back">
+          <div class="card-tag">DECISION HELPER · КОЛИ ЩО</div>
+          <div class="card-body" style="font-size:0.82em; line-height:1.5">
+            <p><b style="color:var(--accent)">pgvector</b> — &lt; 5M векторів, QPS &lt; 100, bank Postgres вже в проді. Deploy за 1 день, CISO sign-off = 0 нових ліцензій.</p>
+            <p style="margin-top:0.3em"><b style="color:var(--box-sp)">Qdrant / Milvus</b> — &gt; 20M векторів, QPS &gt; 500, dedicated infra team. Коли p95 search &gt; 100ms на pgvector — міграція.</p>
+            <p style="margin-top:0.3em"><b style="color:var(--box-gate)">OpenSearch</b> — Elastic вже deployed, hybrid BM25+vector з коробки, SIEM/logs infra reuse.</p>
+            <p style="margin-top:0.4em"><b>Migration path:</b> pgvector → OpenSearch (if Elastic exists) → Qdrant (if dedicated). Ніколи не починай з Qdrant на PoC.</p>
+            <p style="margin-top:0.3em"><b>Anti-pattern:</b> «візьмемо Pinecone — managed». Managed vendor = перевіряй SOC2 Type II, data residency UA/EU, SLA з compensations.</p>
+          </div>
+          <div class="fc-back-hint">← back</div>
+        </div></div>
       </div>
 
-      <div class="card c-out">
-        <div class="card-tag">DOCUMENT-LEVEL SECURITY (DLS) · ПАСТКА POST-FILTERING</div>
+      <div class="card c-out flip-card" tabindex="0" role="button" aria-label="Flip DLS card" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+        <div class="flip-card-inner"><div class="flip-card-face flip-card-front">
+        <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#i-shield-check"/></svg>DOCUMENT-LEVEL SECURITY (DLS) · ПАСТКА POST-FILTERING</div>
         <div class="card-body" style="font-size:0.83em; line-height:1.55">
           <p style="margin-bottom:0.35em"><b style="color:var(--lilac)">Чому у банку виникає DLS:</b> Документи мають різний гриф (публічні оферти, ДСК, закриті формули ризиків). Копілот один, але клієнт і андеррайтер мають бачити різне.</p>
 
@@ -1889,6 +2379,18 @@ SLIDES.push({ title:"Vector Storage & DLS", html:`
           <code style="font-family:var(--font-mono); font-size:0.92em; color:var(--accent)">WHERE allowed_roles &amp;&amp; :user_roles AND effective_date &lt;= CURRENT_DATE</code><br>
           Граф HNSW крокує <b>виключно</b> дозволеними вузлами. 100% захист від витоку і гарантія непорожньої видачі.</p>
         </div>
+        </div>
+        <div class="flip-card-face flip-card-back">
+          <div class="card-tag">DLS · HOW TO TEST + REG</div>
+          <div class="card-body" style="font-size:0.82em; line-height:1.5">
+            <p><b>Smoke test:</b> same query as (а) клієнт і (б) андеррайтер → очікуй різні top-K, нуль документів з грифом ДСК у клієнта.</p>
+            <p style="margin-top:0.3em"><b>Golden set:</b> 50 queries × 3 ролі = 150 перевірок. Будь-який leak ДСК у клієнта → P0 incident.</p>
+            <p style="margin-top:0.3em"><b>Регуляторика:</b> Ст. 60 ЗУ «Про банки» (банківська таємниця) + GDPR Art. 32 (technical safeguards). Pre-filter = «технічний захист», post-filter = «софтверна гарантія без доказу».</p>
+            <p style="margin-top:0.3em"><b>Anti-pattern №2:</b> копіювати документи в окремі індекси за ролями → 3× storage + sync-pain + stale data. Один індекс + predicate = правильно.</p>
+            <p style="margin-top:0.3em"><b>Audit:</b> log <code>user_roles</code> та <code>retrieved_doc_ids</code> на кожному запиті — для recovery у разі витоку.</p>
+          </div>
+          <div class="fc-back-hint">← back</div>
+        </div></div>
       </div>
     </div>
     <div class="strip">
@@ -1929,44 +2431,29 @@ SLIDES.push({ title:"Vector Storage & DLS", html:`
 SLIDES.push({ title:"RAG failure triage", html:`
 <div class="slide">
   <div class="slide-title">RAG failure triage · <span class="accent">4 режими відмови в банку</span></div>
-  <div class="slide-subtitle">Як діагностувати збій у RAG-пайплайні та які інженерні важелі крутити замість «покращити промпт»</div>
+  <div class="slide-subtitle">Як діагностувати збій у RAG-пайплайні та які інженерні важелі крутити замість «покращити промпт» · <span style="color:var(--accent)">натисни → фікс + метрика</span></div>
   <div class="content">
     <div class="grid-2" style="flex:1">
-      <div class="card c-out">
-        <div class="card-tag">1 · HALLUCINATION (НИЗЬКА FAITHFULNESS)</div>
-        <div class="card-body">
-          <p><b>СИМПТОМ:</b> Модель стверджує факти, пільгові ставки або умови схвалення, яких немає в знайдених документах.</p>
-          <p style="margin-top:0.3em"><b>ПРИЧИНА:</b> Параметрична пам’ять LLM пересилює контекст; модель «дофантазовує» відповідь.</p>
-          <p style="margin-top:0.3em; color:var(--accent)"><b>ІНЖЕНЕРНИЙ ФІКС:</b> Citation gate (вимога цитувати конкретний § SOP); примусовий refusal («якщо факт відсутній — поверни відмову»); temperature=0; перевірка faithfulness перед видачею.</p>
+      ${[
+        {cls:'c-out',  ic:'i-alert-triangle', tag:'1 · HALLUCINATION (НИЗЬКА FAITHFULNESS)',   front:'<p><b>СИМПТОМ:</b> Модель стверджує факти, пільгові ставки або умови схвалення, яких немає в знайдених документах.</p>', back:'<p><b>Причина:</b> параметрична пам\'ять LLM пересилює контекст — модель «дофантазовує».</p><p style="margin-top:0.3em; color:var(--accent)"><b>Фікс:</b> citation gate (вимога цитувати § SOP) · refusal pattern («якщо факту немає — відмова») · temperature=0 · faithfulness check перед видачею.</p><p style="margin-top:0.3em"><b>Метрика:</b> RAGAS faithfulness &lt; 0.85 → trigger review. Air Canada bereavement кейс — класичний приклад.</p>'},
+        {cls:'c-gate', ic:'i-database',       tag:'2 · RETRIEVAL MISS (НИЗЬКИЙ CONTEXT RECALL)', front:'<p><b>СИМПТОМ:</b> Відповідь логічна, але неповна: пропущено виняток для ФОП, валютне обмеження чи постанову НБУ.</p>', back:'<p><b>Причина:</b> поганий чанкінг розірвав статтю; semantic gap між термінами юзера та регламенту.</p><p style="margin-top:0.3em; color:var(--box-gate)"><b>Фікс:</b> Contextual Retrieval (prepend doc context до chunk) · hybrid search (BM25 для кодів постанов) · top-K ↑ + cross-encoder rerank.</p><p style="margin-top:0.3em"><b>Метрика:</b> context recall &lt; 0.9 на golden set (100 Q+expected docs) → tune chunking або retrieval.</p>'},
+        {cls:'c-sp',   ic:'i-scale',          tag:'3 · FACTUAL / MATH ERROR (НИЗЬКА CORRECTNESS)', front:'<p><b>СИМПТОМ:</b> Retriever знайшов вірний пункт регламенту («макс. PTI 45%»), але LLM порахувала 52% і схвалила заявку.</p>', back:'<p><b>Причина:</b> арифметика, PMT/PTI, перевірка лімітів через natural language — LLM не калькулятор.</p><p style="margin-top:0.3em; color:var(--lilac)"><b>Фікс:</b> «RAG — для правил, Tools — для математики». Будь-який calc → Python/DuckDB tool-call. LLM лише інтерпретує результат.</p><p style="margin-top:0.3em"><b>Метрика:</b> cross-check LLM answer vs tool-call result → alert при mismatch. Shadow tool-call на 10% трафіку.</p>'},
+        {cls:'c-std',  ic:'i-git-fork',       tag:'4 · INTENT DRIFT (НИЗЬКА ANSWER RELEVANCY)', front:'<p><b>СИМПТОМ:</b> Клієнт питав про дострокове погашення автокредиту, а бот відповів про тарифи на кредитні картки.</p>', back:'<p><b>Причина:</b> запит неоднозначний; пошук спрацював по випадкових спільних словах («погашення», «термін»).</p><p style="margin-top:0.3em; color:var(--box-std)"><b>Фікс:</b> intent router перед RAG · clarifying turn («auto чи кредитка?») · metadata filter (product_category=auto) на vector search.</p><p style="margin-top:0.3em"><b>Метрика:</b> answer_relevancy &lt; 0.7 → intent router невпевнений; log confusion matrix по intent, retrain classifier.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body">${c.front}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag">${c.tag}</div>
+              <div class="card-body" style="font-size:0.86em; line-height:1.5">${c.back}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div class="card c-gate">
-        <div class="card-tag">2 · RETRIEVAL MISS (НИЗЬКИЙ CONTEXT RECALL)</div>
-        <div class="card-body">
-          <p><b>СИМПТОМ:</b> Відповідь логічна, але неповна: пропущено виняток для ФОП, валютне обмеження чи постанову НБУ.</p>
-          <p style="margin-top:0.3em"><b>ПРИЧИНА:</b> Поганий чанкінг розірвав статтю; семантичний розрив між термінами юзера та регламенту.</p>
-          <p style="margin-top:0.3em; color:var(--box-gate)"><b>ІНЖЕНЕРНИЙ ФІКС:</b> Contextual Retrieval (препенд контексту документа); Hybrid search (BM25 для точних кодів/постанов); збільшення top-K кандидатів + Cross-encoder rerank.</p>
-        </div>
-      </div>
-
-      <div class="card c-sp">
-        <div class="card-tag">3 · FACTUAL / MATH ERROR (НИЗЬКА CORRECTNESS)</div>
-        <div class="card-body">
-          <p><b>СИМПТОМ:</b> Retriever знайшов вірний пункт регламенту («макс. PTI 45%»), але LLM порахувала 52% і схвалила заявку.</p>
-          <p style="margin-top:0.3em"><b>ПРИЧИНА:</b> Спроба виконувати арифметику, ануїтетні формули та перевірку лімітів через natural language.</p>
-          <p style="margin-top:0.3em; color:var(--lilac)"><b>ІНЖЕНЕРНИЙ ФІКС:</b> Золоте правило: «RAG — для вилучення правил, Tools — для математики». Будь-який розрахунок (PTI, DTI, графік) виконується у Python/DuckDB tools.</p>
-        </div>
-      </div>
-
-      <div class="card c-std">
-        <div class="card-tag">4 · INTENT DRIFT (НИЗЬКА ANSWER RELEVANCY)</div>
-        <div class="card-body">
-          <p><b>СИМПТОМ:</b> Клієнт питав про дострокове погашення автокредиту, а бот відповів про тарифи на кредитні картки.</p>
-          <p style="margin-top:0.3em"><b>ПРИЧИНА:</b> Запит неоднозначний; пошук спрацював по випадкових спільних словах («погашення», «термін»).</p>
-          <p style="margin-top:0.3em; color:var(--box-std)"><b>ІНЖЕНЕРНИЙ ФІКС:</b> Intent router перед викликом RAG; clarifying turn (уточнення наміру у клієнта); фільтрація бази знань за метаданими продукту (product_category=auto).</p>
-        </div>
-      </div>
+      `).join('')}
     </div>
     <div class="strip">
       <b>ГОЛОВНИЙ ПРИНЦИП ТРІАЖУ ДЛЯ АРХІТЕКТОРА:</b> єдиної метрики «accuracy RAG» не існує. Якщо система видала збій — локалізуйте, де саме стався відрив: у пошуку (retriever miss), у генерації (hallucination) чи у підміні коду на промпт (math error).
@@ -2002,9 +2489,9 @@ SLIDES.push({ title:"Enterprise LLM Gateway", html:`
       <div class="card c-std">
         <div class="card-tag">1 · ПРИВАТНІСТЬ ТА БАНКІВСЬКА ТАЄМНИЦЯ</div>
         <div class="card-body">
-          <p><b>VPC Private Endpoint:</b> Єдина точка виклику до моделей (Azure OpenAI EU або DIAL on-prem). Нульовий вихід трафіку у публічний інтернет.</p>
+          <p><b>UA residency first:</b> <b style="color:var(--accent)">DIAL on-prem або UA-резидентний cloud</b> — дефолт для банківської таємниці (Ст. 60). Azure OpenAI EU — compromise з NBU no-objection letter. US-based endpoint — заборонено.</p>
           <p style="margin-top:0.4em"><b>PII Masking & DLP:</b> Автоматичне маскування PAN карток, номерів паспортів та ІПН перед відправкою у модель.</p>
-          <p style="margin-top:0.4em; color:var(--accent)"><b>Zero Data Retention:</b> Юридична домовленість про відсутність збереження даних для навчання провайдером.</p>
+          <p style="margin-top:0.4em; color:var(--accent)"><b>Zero Data Retention:</b> Юридична домовленість про відсутність збереження даних для навчання провайдером (BAA / DPA підписаний).</p>
         </div>
       </div>
 
@@ -2061,17 +2548,18 @@ SLIDES.push({ title:"W2 Use-case", html:`
           <p style="padding-left:0.6em; line-height:1.6">· hybrid: BM25 + dense (bge-m3)<br>· chunking: semantic, 500 tok, 50 overlap<br>· top-K=10 → cross-encoder → top-N=4<br>· filter: effective_date ≤ today</p>
           <p style="margin-top:0.4em"><b style="color:var(--error)">GUARDRAILS:</b></p>
           <p style="padding-left:0.6em">· citation mandatory (POL-*/SOP-*)<br>· refusal на unknown → escalate</p>
-          <p style="margin-top:0.4em; color:var(--lilac); font-style:italic">Chroma · bge-m3 · BGE-reranker</p>
+          <p style="margin-top:0.4em; color:var(--lilac); font-style:italic">pgvector (HNSW) · bge-m3 · BGE-reranker</p>
         </div>
       </div>
       <div style="display:flex; flex-direction:column; gap:0.4em">
         <div style="color:var(--box-sp); font-size:0.78em; font-weight:700; letter-spacing:0.1em; text-transform:uppercase">RISK · 3 TOOLS</div>
         <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">kyc.lookup</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> kyc_officer<br><span style="color:var(--accent)">cost</span> $0.80/call · 5/min</div></div>
-        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">credit_history.pull</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> loan_officer<br><span style="color:var(--accent)">consent</span> <b style="color:var(--warning)">так — recorded consent_id</b><br><span style="color:var(--accent)">cost</span> $8.50/call · 5/min</div></div>
+        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">credit_history.pull</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> loan_officer<br><span style="color:var(--accent)">consent</span> <b style="color:var(--warning)">так — recorded consent_id</b><br><span style="color:var(--accent)">cost</span> ~$1.50/call (UBKI) · 5/min</div></div>
         <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">risk.score</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> internal · write<br><span style="color:var(--accent)">role</span> risk_analyst<br><span style="color:var(--accent)">cost</span> $0.05/call · 60/min</div></div>
       </div>
     </div>
-    <div class="strip lilac"><b>GATEWAY+OBS:</b> litellm → Azure OpenAI EU (private endpoint) · budget 100 UAH/user/day · prompt cache on · Langfuse traces · OTel GenAI</div>
+    <div class="strip lilac"><b>GATEWAY+OBS:</b> litellm → DIAL on-prem (UA-резидент) або Azure OpenAI EU · budget 100 UAH/user/day · prompt cache on · Langfuse traces · OTel GenAI</div>
+    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.08)"><b style="color:var(--accent)">🎬 LIVE · CodeMie demo:</b> показуємо Eligibility Agent + 3 tools у CodeMie Workflows (Sequential). Код — у домашнє завдання · <code>module_2_grounding/03-exercise.md</code>.</div>
   </div>
   ${gloss([["RAG","Retrieval-Augmented Generation"],["RBAC","Role-Based Access Control"]])}
 </div>`, notes:`
@@ -2087,7 +2575,7 @@ SLIDES.push({ title:"W2 Use-case", html:`
       <li><b>2. Права панель · Risk Agent (Tools-спеціаліст):</b>
         <br><i>Задача:</i> Зібрати юридично достовірні дані про позичальника та розрахувати скоринг. Жодного RAG тут немає — лише прямі виклики 3 сервісів.
         <br>· <b>Tool 1 (kyc.lookup):</b> Перевіряє санкційні списки, статус PEP (публічні діячі) та дійсність паспорта у держреєстрах. Side-effect: <code>external-read</code>. Викликається від імені ролі <code>kyc_officer</code>. Вартість — $0.80 за запит.
-        <br>· <b>Tool 2 (credit_history.pull):</b> Витягує кредитну історію з УБКІ (Українське бюро кредитних історій). Вартість — $8.50 за виклик. <b>Критична точка контролю:</b> поле <code>consent</code>. Агент фізично не може викликати цей метод без дійсного <code>consent_id</code> позичальника.
+        <br>· <b>Tool 2 (credit_history.pull):</b> Витягує кредитну історію з УБКІ (Українське бюро кредитних історій). Вартість — ~$1.50 за виклик (UAH 50–80, залежно від контракту). <b>Критична точка контролю:</b> поле <code>consent</code>. Агент фізично не може викликати цей метод без дійсного <code>consent_id</code> позичальника.
         <br>· <b>Tool 3 (risk.score):</b> Запускає скорингову модель на базі отриманих даних і записує скоринг-бал у реєстр заявки. Side-effect: <code>internal-write</code>. Роль: <code>risk_analyst</code>. Вартість — $0.05.</li>
       <li><b>3. Нижня стрічка · Шлюз та обсервабіліті:</b>
         Усі звернення координуються через LiteLLM у приватний екосистемний ендпоінт. Трейси пишуться у Langfuse, метрики часу та витрат — через OpenTelemetry GenAI семантичні конвенції.</li>
@@ -2142,7 +2630,7 @@ SLIDES.push({ title:"W2 · Tool canvas", html:`
           <span style="color:var(--box-sp)">3. SIDE-EFFECT:</span> external · read (запит платний, без повторних мутацій)<br>
           <span style="color:var(--box-sp)">4. RBAC:</span> role = "loan_underwriter" (заборонено ролі customer_support)<br>
           <span style="color:var(--warning)">5. CONSENT:</span> обов'язковий перевірений consent_id у БД з міткою часу<br>
-          <span style="color:var(--warning)">6. SLA/COST:</span> timeout 4.0s · rate-limit 10/min · вартість $8.50/виклик
+          <span style="color:var(--warning)">6. SLA/COST:</span> timeout 4.0s · rate-limit 10/min · вартість ~$1.50/виклик (UBKI)
         </div>
       </div>
     </div>
@@ -2171,6 +2659,7 @@ SLIDES.push({ title:"W3 Agenda", html:`
   <div class="slide-title">Webinar 3 · <span class="accent">agenda</span></div>
   <div class="slide-subtitle">2 години · теорія (durable workflows + state engines + Saga) → практика (11-node flow) → EU AI Act compliance</div>
   <div class="content">
+    <div class="strip" style="border-left-color:var(--box-gate); background:rgba(245,165,52,0.08)"><b style="color:var(--box-gate)">🏗 WHAT WE ADD THIS WEEK (vs W2 grounded):</b> LangGraph FSM + checkpointer · 3 durable waits (24h/7d/e-sign) · 2 conditional HITL · Saga compensation · idempotency barrier · <b>end-state:</b> Loan Copilot переживає <code>kill -9</code> о 3:00 і НЕ дублює виплат — <code>module_3_workflows/</code></div>
     <div class="split-22">
       <div class="card c-std">
         <div class="card-tag">ТЕОРІЯ · НАДІЙНІСТЬ ТА АРХІТЕКТУРА ДОВГИХ ПРОЦЕСІВ</div>
@@ -2271,44 +2760,29 @@ SLIDES.push({ title:"W3 Theory", html:`
 SLIDES.push({ title:"State Engines", html:`
 <div class="slide">
   <div class="slide-title">State engines · <span class="accent">LangGraph vs Temporal vs CodeMie vs Camunda</span></div>
-  <div class="slide-subtitle">Порівняльна матриця Workflow Engines для корпоративного AI-архітектора банку</div>
+  <div class="slide-subtitle">Порівняльна матриця Workflow Engines для корпоративного AI-архітектора банку · <span style="color:var(--accent)">натисни → use / avoid / vs інші</span></div>
   <div class="content">
     <div class="grid-2" style="flex:1">
-      <div class="card c-std">
-        <div class="card-tag">1 · LANGGRAPH (PYTHON-NATIVE AI ENGINE)</div>
-        <div class="card-body" style="font-size:0.86em; line-height:1.65">
-          <p><b>Що це:</b> Графовий Workflow Engine на базі LangChain для побудови мультиагентних систем із вбудованими чекпоінтами (SQLite, Postgres, Redis).</p>
-          <p style="margin-top:0.4em"><b>Ідеально для:</b> Циклів мислення агентів, динамічних переходів, внутрішньої рефлексії та роботи з пам'яттю всередині AI-сервісу.</p>
-          <p style="margin-top:0.4em; color:var(--accent)"><b>Обмеження:</b> Орієнтований переважно на Python; складніший для міжсистемної оркестрації 20 різних банківських систем.</p>
+      ${[
+        {cls:'c-std',  ic:'i-workflow',   tag:'1 · LANGGRAPH (PYTHON-NATIVE AI ENGINE)', front:'<p><b>Що це:</b> Графовий Workflow Engine на базі LangChain для побудови мультиагентних систем із вбудованими чекпоінтами (SQLite, Postgres, Redis).</p><p style="margin-top:0.4em"><b>Ідеально для:</b> Циклів мислення агентів, динамічних переходів, внутрішньої рефлексії та роботи з пам\'яттю всередині AI-сервісу.</p><p style="margin-top:0.4em; color:var(--accent)"><b>Обмеження:</b> Орієнтований переважно на Python; складніший для міжсистемної оркестрації 20 різних банківських систем.</p>', back:'<p><b>Use when:</b> AI-first service, Python stack, agentic cycles з rich state (memory, reflection, branching).</p><p style="margin-top:0.25em"><b>Avoid when:</b> cross-system orchestration з 5+ external backends — брак built-in retry/timeout infra рівня Temporal.</p><p style="margin-top:0.25em"><b>Банк:</b> наш Loan Copilot specialist loop (intake → KYC → underwriter) у Python-сервісі.</p><p style="margin-top:0.25em"><b>Vs Temporal:</b> легший старт, менша надійність для multi-day pauses. Vs Camunda: no BPMN, no business-visible diagram.</p>'},
+        {cls:'c-sp',   ic:'i-cloud',      tag:'2 · TEMPORAL / CADENCE (DISTRIBUTED ORCHESTRATOR)', front:'<p><b>Що це:</b> Індустріальний стандарт для наднадійних розподілених бізнес-процесів (Uber, Stripe, Netflix). Повна гарантія завершення коду.</p><p style="margin-top:0.4em"><b>Ідеально для:</b> Довгих фінансових процесів (виплата кредиту, транзакції між банками), що тривають місяцями та переживають падіння цілих датацентрів.</p><p style="margin-top:0.4em; color:var(--lilac)"><b>Обмеження:</b> Вимагає окремого кластера та строгого детермінізму в коді workflow-функцій.</p>', back:'<p><b>Use when:</b> workflow &gt; 1 година, 3+ external systems, failure-recovery критичний (гроші, compliance).</p><p style="margin-top:0.25em"><b>Avoid when:</b> team &lt; 5 engineers, no infra budget — Temporal cluster = окремий operational burden.</p><p style="margin-top:0.25em"><b>Банк:</b> cross-bank disbursement, SEPA transfers, 7-day offer window — виживає DC failure.</p><p style="margin-top:0.25em"><b>Vs LangGraph:</b> code-first + hard reliability vs Python-first + lighter. Vs Camunda: code vs BPMN diagram.</p>'},
+        {cls:'c-gate', ic:'i-browser',    tag:'3 · CODEMIE WORKFLOWS (ENTERPRISE LOW-CODE)', front:'<p><b>Що це:</b> Вбудований Workflow Engine платформи CodeMie (Sequential mode) для візуального налаштування послідовних агентних кроків через UI/YAML.</p><p style="margin-top:0.4em"><b>Ідеально для:</b> Швидкої інтеграції готових асистентів, деплою з коробки та вбудованих форм для операторів банку.</p><p style="margin-top:0.4em; color:var(--box-gate)"><b>Обмеження:</b> Менш гнучкий для довільних кастомних графів зі складною циклічною логікою.</p>', back:'<p><b>Use when:</b> time-to-market критичний, business operators самі збирають flow через UI, лінійний sequential процес.</p><p style="margin-top:0.25em"><b>Avoid when:</b> складні цикли, dynamic routing, hard reliability guarantees — low-code стеля швидко вдарить.</p><p style="margin-top:0.25em"><b>Банк:</b> customer support assistant — compliance team сама змінює flow без Python deployment.</p><p style="margin-top:0.25em"><b>Vs LangGraph:</b> UI/YAML vs code. Vs Camunda: AI-native, легший старт, менша legacy інтеграція.</p>'},
+        {cls:'c-out',  ic:'i-scale',      tag:'4 · CAMUNDA / BPMN 2.0 (БАНКІВСЬКИЙ СТАНДАРТ)', front:'<p><b>Що це:</b> Традиційний корпоративний Workflow Engine бізнес-процесів, стандартизований у більшості українських та світових банків.</p><p style="margin-top:0.4em"><b>Ідеально для:</b> Наскрізних бізнес-процесів банку, зрозумілих комплаєнсу, юристам та бізнес-аналітикам у нотації BPMN.</p><p style="margin-top:0.4em; color:var(--error)"><b>Обмеження:</b> Важкий для динамічних агентних циклів; Java-центричний стек; високий оверхед на кожен LLM-виклик.</p>', back:'<p><b>Use when:</b> compliance/legal вже працюють з BPMN, інтеграція з legacy Java-based бек-ендами, аудит потребує visual diagram.</p><p style="margin-top:0.25em"><b>Avoid when:</b> tight agent loop (ReAct, &lt; 5s roundtrip), LLM-heavy, no Java/JVM у стеку.</p><p style="margin-top:0.25em"><b>Банк:</b> existing legacy loan approval процес вже у BPMN — AI агенти як BPMN tasks всередині.</p><p style="margin-top:0.25em"><b>Vs Temporal:</b> BPMN-first (business-readable) vs code-first. Vs LangGraph: enterprise standard, важчий для AI loops.</p>'},
+      ].map(c => `
+        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+          <div class="flip-card-inner">
+            <div class="flip-card-face flip-card-front">
+              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
+              <div class="card-body" style="font-size:0.86em; line-height:1.65">${c.front}</div>
+            </div>
+            <div class="flip-card-face flip-card-back">
+              <div class="card-tag">${c.tag}</div>
+              <div class="card-body" style="font-size:0.82em; line-height:1.45">${c.back}</div>
+              <div class="fc-back-hint">← back</div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div class="card c-sp">
-        <div class="card-tag">2 · TEMPORAL / CADENCE (DISTRIBUTED ORCHESTRATOR)</div>
-        <div class="card-body" style="font-size:0.86em; line-height:1.65">
-          <p><b>Що це:</b> Індустріальний стандарт для наднадійних розподілених бізнес-процесів (Uber, Stripe, Netflix). Повна гарантія завершення коду.</p>
-          <p style="margin-top:0.4em"><b>Ідеально для:</b> Довгих фінансових процесів (виплата кредиту, транзакції між банками), що тривають місяцями та переживають падіння цілих датацентрів.</p>
-          <p style="margin-top:0.4em; color:var(--lilac)"><b>Обмеження:</b> Вимагає окремого кластера та строгого детермінізму в коді workflow-функцій.</p>
-        </div>
-      </div>
-
-      <div class="card c-gate">
-        <div class="card-tag">3 · CODEMIE WORKFLOWS (ENTERPRISE LOW-CODE)</div>
-        <div class="card-body" style="font-size:0.86em; line-height:1.65">
-          <p><b>Що це:</b> Вбудований Workflow Engine платформи CodeMie (Sequential mode) для візуального налаштування послідовних агентних кроків через UI/YAML.</p>
-          <p style="margin-top:0.4em"><b>Ідеально для:</b> Швидкої інтеграції готових асистентів, деплою з коробки та вбудованих форм для операторів банку.</p>
-          <p style="margin-top:0.4em; color:var(--box-gate)"><b>Обмеження:</b> Менш гнучкий для довільних кастомних графів зі складною циклічною логікою.</p>
-        </div>
-      </div>
-
-      <div class="card c-out">
-        <div class="card-tag">4 · CAMUNDA / BPMN 2.0 (БАНКІВСЬКИЙ СТАНДАРТ)</div>
-        <div class="card-body" style="font-size:0.86em; line-height:1.65">
-          <p><b>Що це:</b> Традиційний корпоративний Workflow Engine бізнес-процесів, стандартизований у більшості українських та світових банків.</p>
-          <p style="margin-top:0.4em"><b>Ідеально для:</b> Наскрізних бізнес-процесів банку, зрозумілих комплаєнсу, юристам та бізнес-аналітикам у нотації BPMN.</p>
-          <p style="margin-top:0.4em; color:var(--error)"><b>Обмеження:</b> Важкий для динамічних агентних циклів; Java-центричний стек; високий оверхед на кожен LLM-виклик.</p>
-        </div>
-      </div>
+      `).join('')}
     </div>
     <div class="strip">
       <b>ПРАВИЛО КОМПОЗИЦІЇ ДЛЯ SOLUTION ARCHITECT:</b> У зрілому банку ці Workflow Engines не конкурують, а доповнюють один одного: <b>Temporal або Camunda</b> оркеструє глобальний кредитний процес між бек-енд системами (core banking, БКІ, карти), а <b>LangGraph</b> працює як інтелектуальний AI Workflow Engine всередині кредитного копілота.
@@ -2393,23 +2867,41 @@ SLIDES.push({ title:"Resilience & Saga", html:`
 SLIDES.push({ title:"W3 Use-case", html:`
 <div class="slide">
   <div class="slide-title">Webinar 3 · Use-case — <span class="accent">Loan-issuance workflow</span></div>
-  <div class="slide-subtitle">12 вузлів · 3 wait_for events · 2 conditional HITL · 1 evaluator gate · виживає ніч</div>
+  <div class="slide-subtitle">12 вузлів · 3 wait_for events · 2 conditional HITL · 1 evaluator gate · виживає ніч · <span style="color:var(--accent)">натисни на вузол → деталі</span></div>
   <div class="content">
-    <div class="flow">
-      <div class="flow-node c-std"><div class="kind">assistant</div><div class="name">intake</div><div class="anno">greet+8 fields</div></div>
-      <div class="flow-node c-sp"><div class="kind">hitl</div><div class="name">docs_requested</div><div class="anno">⏸ docs.uploaded</div></div>
-      <div class="flow-node c-std"><div class="kind">tool</div><div class="name">docs_processing</div><div class="anno">OCR</div></div>
-      <div class="flow-node c-gate"><div class="kind">hitl</div><div class="name">analyst_review</div><div class="anno">◆ OCR&lt;0.85</div></div>
-      <div class="flow-node c-std"><div class="kind">assistant</div><div class="name">kyc</div><div class="anno">sanctions+PEP</div></div>
-      <div class="flow-node c-std"><div class="kind">assistant</div><div class="name">credit_history</div><div class="anno">score 300–850</div></div>
-    </div>
-    <div class="flow">
-      <div class="flow-node c-std"><div class="kind">assistant</div><div class="name">underwriter</div><div class="anno">4-tier policy</div></div>
-      <div class="flow-node c-gate"><div class="kind">hitl</div><div class="name">committee_review</div><div class="anno">◆ band=gray</div></div>
-      <div class="flow-node c-sp"><div class="kind">hitl</div><div class="name">offer</div><div class="anno">⏸ offer.decision</div></div>
-      <div class="flow-node c-std"><div class="kind">tool</div><div class="name">contract_draft</div><div class="anno">template + reserve</div></div>
-      <div class="flow-node c-out"><div class="kind">evaluator</div><div class="name">verify_before_send</div><div class="anno">pre-write gate</div></div>
-      <div class="flow-node c-sp"><div class="kind">hitl</div><div class="name">sign_awaiting</div><div class="anno">⏸ contract.signed</div></div>
+    <div class="flow-canvas" data-flow>
+      <svg class="flow-wires" aria-hidden="true"></svg>
+      <div class="flow-grid flow-grid-snake-6">
+        ${[
+          {n:'01',k:'assistant',ic:'i-bot',       name:'intake',             anno:'greet + 8 fields',  c:'std',  row:1, col:1, back:'LLM вітає клієнта, збирає 8 полів заявки у чаті Privat24.'},
+          {n:'02',k:'hitl',     ic:'i-timer',     name:'docs_requested',     anno:'<span class="pause">⏸ docs.uploaded</span>', c:'sp',  row:1, col:2, back:'<b>Durable wait</b> 24–48г. Чекає подію <code>docs.uploaded</code>. Процес повністю засинає.'},
+          {n:'03',k:'tool',     ic:'i-file-text', name:'docs_processing',    anno:'OCR',               c:'std', row:1, col:3, back:'OCR розпізнає документи, витягує структуровані поля.'},
+          {n:'04',k:'hitl',     ic:'i-id-card',   name:'analyst_review',     anno:'<span class="cond">◆ OCR&lt;0.85</span>', c:'gate', row:1, col:4, back:'<b>Умовний гейт</b>: лише при OCR confidence &lt; 0.85. Чітке фото → happy path пропускає.'},
+          {n:'05',k:'assistant',ic:'i-shield-check',name:'kyc',              anno:'sanctions + PEP',   c:'std', row:1, col:5, back:'Санкційні списки РНБО, PEP-реєстр.'},
+          {n:'06',k:'assistant',ic:'i-chart',     name:'credit_history',     anno:'score 300–850',     c:'std', row:1, col:6, back:'Consent gate → БКІ → скор 300–850 + історія заборгованості.'},
+          {n:'07',k:'assistant',ic:'i-scale',     name:'underwriter',        anno:'4-tier policy',     c:'std', row:2, col:6, back:'PMT, PTI, 4-tier policy matrix (A/B/C/D).'},
+          {n:'08',k:'hitl',     ic:'i-users',     name:'committee_review',   anno:'<span class="cond">◆ band=gray</span>', c:'gate', row:2, col:5, back:'<b>Умовний гейт</b>: сіра зона Tier C (550–650). Credit officer vote.'},
+          {n:'09',k:'hitl',     ic:'i-handshake', name:'offer',              anno:'<span class="pause">⏸ offer.decision</span>', c:'sp',  row:2, col:4, back:'<b>Durable wait</b> до 7 днів. Expired → процес у термінальний стан.'},
+          {n:'10',k:'tool',     ic:'i-file-text', name:'contract_draft',     anno:'template + reserve',c:'std', row:2, col:3, back:'Генерує договір за валідованим шаблоном, резервує ліміт у backend.'},
+          {n:'11',k:'evaluator',ic:'i-shield-check',name:'verify_before_send',anno:'pre-write gate',    c:'out', row:2, col:2, back:'<b>Pre-write gate</b>. Звіряє ставку/термін/ліміт з андеррайтингом. Fail → ескалація інженеру.'},
+          {n:'12',k:'hitl',     ic:'i-signature', name:'sign_awaiting',      anno:'<span class="pause">⏸ contract.signed</span>', c:'sp',  row:2, col:1, back:'Фінальна durable pause. Дія.Підпис → idempotent webhook → disburse.'}
+        ].map(s=>`
+          <div class="flow-card c-${s.c}" style="--k:var(--box-${s.c}); grid-column:${s.col}; grid-row:${s.row}" data-kind="${s.k}" tabindex="0" role="button" aria-label="Flip ${s.n} ${s.name}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+            <div class="flow-card-inner">
+              <div class="flow-face flow-face-front">
+                <div class="fc-head"><span class="fc-num">${s.n}</span><svg class="fc-ico"><use href="#${s.ic}"/></svg><span class="fc-kind">${s.k}</span></div>
+                <div class="fc-name">${s.name}</div>
+                <div class="fc-anno">${s.anno}</div>
+              </div>
+              <div class="flow-face flow-face-back">
+                <div class="fc-back-head"><svg class="fc-ico"><use href="#${s.ic}"/></svg><span class="fc-back-title">${s.n} · ${s.name}</span></div>
+                <div class="fc-back-body">${s.back}</div>
+                <div class="fc-back-hint">← back</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
     </div>
     <div class="grid-4" style="margin-top:0.4em">
       <div class="strip lilac"><b>⏸ wait_for</b> event-driven resume</div>
@@ -2417,6 +2909,7 @@ SLIDES.push({ title:"W3 Use-case", html:`
       <div class="strip" style="border-left-color:var(--box-out)"><b style="color:var(--box-out)">evaluator</b> pre-write gate (verify_before_send)</div>
       <div class="strip"><b>idempotency</b> (run_id, node, event_id)</div>
     </div>
+    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.08); margin-top:0.3em"><b style="color:var(--accent)">🎬 LIVE · CodeMie demo:</b> showcasing durable workflow у CodeMie Workflows + checkpointer. Full LangGraph FSM, Saga-rollback та idempotency — у домашнє завдання · <code>module_3_workflows/02-exercise.md</code>.</div>
   </div>
   ${gloss([["HITL","Human-in-the-loop"],["OCR","Optical Character Recognition"],["PII","Personally Identifiable Information"]])}
 </div>`, notes:`
@@ -2443,17 +2936,35 @@ SLIDES.push({ title:"W3 Use-case", html:`
 SLIDES.push({ title:"W3 · Where pauses?", html:`
 <div class="slide">
   <div class="slide-title">W3 interactive · <span class="accent">Where does it pause?</span></div>
-  <div class="slide-subtitle">Позначте кожен edge: HITL ◆ · timeout ⏱ · dead-letter ☠ · idempotency barrier ○</div>
+  <div class="slide-subtitle">Позначте кожен edge: HITL ◆ · timeout ⏱ · dead-letter ☠ · idempotency barrier ○ · <span style="color:var(--accent)">натисни вузол → відповідь</span></div>
   <div class="content">
-    <div style="flex:1; display:flex; flex-direction:column; gap:0.4em; justify-content:center">
-      <div class="flow">
-        <div class="flow-node c-std"><div class="kind">assistant</div><div class="name">intake</div></div>
-        <div class="flow-node c-sp"><div class="kind">hitl</div><div class="name">docs_requested</div><div class="anno">? тип паузи</div></div>
-        <div class="flow-node c-std"><div class="kind">tool</div><div class="name">docs_processing</div><div class="anno">? OCR висне</div></div>
-        <div class="flow-node c-std"><div class="kind">assistant</div><div class="name">credit_history</div><div class="anno">? сервіс 503</div></div>
-        <div class="flow-node c-sp"><div class="kind">hitl</div><div class="name">offer</div><div class="anno">? клієнт зник</div></div>
-        <div class="flow-node c-sp"><div class="kind">hitl</div><div class="name">sign_awaiting</div><div class="anno">? повтор вебхука</div></div>
-        <div class="flow-node c-std"><div class="kind">end</div><div class="name">end</div></div>
+    <div class="flow-canvas" data-flow>
+      <svg class="flow-wires" aria-hidden="true"></svg>
+      <div class="flow-grid" style="grid-template-columns:repeat(7, 1fr); grid-auto-rows:9.5em">
+        ${[
+          {n:'01',k:'assistant',ic:'i-bot',       name:'intake',          anno:'',                      c:'std', col:1, back:'Старт процесу. Детермінований збір полів.'},
+          {n:'02',k:'hitl',     ic:'i-timer',     name:'docs_requested',  anno:'? тип паузи',            c:'sp',  col:2, back:'<b>◆ HITL (Durable Wait)</b>. 24–48г, стан у БД, процес не крутиться.'},
+          {n:'03',k:'tool',     ic:'i-file-text', name:'docs_processing', anno:'? OCR висне',            c:'std', col:3, back:'<b>⏱ TIMEOUT 60с + retry backoff</b> (2/4/8с). Після 3 спроб → <b>☠ Dead-Letter</b>.'},
+          {n:'04',k:'assistant',ic:'i-chart',     name:'credit_history',  anno:'? сервіс 503',           c:'std', col:4, back:'<b>⏱ TIMEOUT 10с → ☠ DEAD-LETTER</b>. Фоновий воркер повторює через годину.'},
+          {n:'05',k:'hitl',     ic:'i-handshake', name:'offer',           anno:'? клієнт зник',          c:'sp',  col:5, back:'<b>◆ HITL + ⏱ бізнес-таймаут 7 днів</b>. Expired → ставка анулюється.'},
+          {n:'06',k:'hitl',     ic:'i-signature', name:'sign_awaiting',   anno:'? повтор вебхука',       c:'sp',  col:6, back:'<b>○ IDEMPOTENCY BARRIER</b>. Композитний ключ у БД → виплата рівно один раз.'},
+          {n:'07',k:'assistant',ic:'i-shield-check',name:'end',           anno:'',                      c:'std', col:7, back:'Термінальний стан. Audit log запечатаний для MAS/НБУ.'}
+        ].map(s=>`
+          <div class="flow-card c-${s.c}" style="--k:var(--box-${s.c}); grid-column:${s.col}; grid-row:1" data-kind="${s.k}" tabindex="0" role="button" aria-label="Flip ${s.n} ${s.name}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
+            <div class="flow-card-inner">
+              <div class="flow-face flow-face-front">
+                <div class="fc-head"><span class="fc-num">${s.n}</span><svg class="fc-ico"><use href="#${s.ic}"/></svg><span class="fc-kind">${s.k}</span></div>
+                <div class="fc-name">${s.name}</div>
+                ${s.anno?`<div class="fc-anno" style="color:var(--warning); font-weight:600; font-style:normal">${s.anno}</div>`:''}
+              </div>
+              <div class="flow-face flow-face-back">
+                <div class="fc-back-head"><svg class="fc-ico"><use href="#${s.ic}"/></svg><span class="fc-back-title">${s.n} · ${s.name}</span></div>
+                <div class="fc-back-body">${s.back}</div>
+                <div class="fc-back-hint">← back</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
       </div>
     </div>
     <div class="grid-4">
@@ -2486,6 +2997,7 @@ SLIDES.push({ title:"EU AI Act", html:`
   <div class="slide-title">EU AI Act · <span class="accent">mapping для Loan Copilot</span></div>
   <div class="slide-subtitle">Кредитний скоринг = HIGH-RISK AI (Annex III §5(b)) · 6 обов'язкових статей та технічні артефакти</div>
   <div class="content">
+    <div class="strip" style="font-size:0.82em; padding:0.55em 0.9em; border-left-color:var(--accent)"><b style="color:var(--accent)">ЧОМУ UA БАНКУ ЦЕ ВАЖИТЬ ВЖЕ ЗАРАЗ:</b> (1) <b>євроінтеграція</b> — приведення банківського законодавства у відповідність з acquis communautaire · (2) <b>EU клієнти у портфелі</b> — обслуговування громадян ЄС підпадає під AI Act напряму · (3) <b>НБУ вже цитує AI Act</b> у настановах щодо responsible AI (2025) · (4) <b>GDPR Art. 22</b> вже діє в UA через ЗУ "Про захист персональних даних" — право на людський перегляд рішення без AI Act.</div>
     <div class="strip gate" style="font-size:0.9em; padding:0.6em 1em"><b>ANNEX III §5(b)</b> — "AI systems intended to be used to evaluate the creditworthiness of natural persons or establish their credit score" → <b style="color:var(--error)">HIGH-RISK AI</b>. Повна юридична та технічна відповідальність банку.</div>
     <table class="mini-table" style="flex:1">
       <thead><tr><th>Стаття EU AI Act</th><th>Юридична вимога</th><th>Технічний артефакт, який зобов'язаний надати архітектор</th></tr></thead>
@@ -2525,6 +3037,7 @@ SLIDES.push({ title:"W4 Agenda", html:`
   <div class="slide-title">Webinar 4 · <span class="accent">agenda</span></div>
   <div class="slide-subtitle">2 години · теорія (eval + obs + sec) → практика (eval pack + cost) → interactive (score answers)</div>
   <div class="content">
+    <div class="strip" style="border-left-color:var(--box-out); background:rgba(254,59,76,0.08)"><b style="color:var(--box-out)">🏗 WHAT WE ADD THIS WEEK (vs W3 durable):</b> 20-case Golden Set + RAGAS · Pre-write evaluator gate · OTel GenAI + Langfuse · FinOps model (14k/день PB scale, $0.47/case) · red-team · EU AI Act compliance pack · <b>end-state:</b> production-ready Loan Copilot з CI quality gate — <code>module_4_production/</code></div>
     <div class="split-22">
       <div class="card c-std">
         <div class="card-tag">ТЕОРІЯ & ДИЗАЙН-ПАТЕРНИ (4 ДІП-ДАЙВИ)</div>
@@ -2533,7 +3046,7 @@ SLIDES.push({ title:"W4 Agenda", html:`
           <p style="padding-left:0.6em">
           · <b>Eval Architecture:</b> RAGAS (4 метрики) + LLM-as-a-judge калібрування<br>
           · <b>GenAI Observability:</b> OpenTelemetry semconv, trace_id, PII-санітизація<br>
-          · <b>FinOps & Economics:</b> воронка 10k/день, Prompt Caching, $2.56/case<br>
+          · <b>FinOps & Economics:</b> воронка 14k/день (PB consumer loans), Prompt Caching, $0.47/case<br>
           · <b>Adversarial Security:</b> Indirect PDF-ін'єкції, захист від витоку ваг скорингу<br>
           · <b>Bank Hardening:</b> 7 обов'язкових стовпів для аудиту CISO банку
           </p>
@@ -2543,7 +3056,7 @@ SLIDES.push({ title:"W4 Agenda", html:`
         <div class="card-tag">ПРАКТИКА</div>
         <div class="card-body" style="font-size:0.88em; line-height:1.9">
           <p><b style="color:var(--box-sp)">Eval pack + cost model</b> для Loan Copilot:</p>
-          <p style="padding-left:0.6em">· 20 Q/A golden set (happy/edge/adversarial)<br>· 7 metrics з targets<br>· LLM-judge spec (rubric, calibration)<br>· cost model: $2.56/case × 10k = $25.6k/день</p>
+          <p style="padding-left:0.6em">· 20 Q/A golden set (happy/edge/adversarial)<br>· 7 metrics з targets<br>· LLM-judge spec (rubric, calibration)<br>· cost model: $0.47/case × 14k = ~$6.6k/день (PB scale)</p>
           <p style="margin-top:0.4em"><b style="color:var(--accent)">Interactive · Score 3 answers:</b></p>
           <p style="padding-left:0.6em">тягніть slider'и · порівняйте з LLM-judge · де він помиляється?</p>
         </div>
@@ -2581,7 +3094,7 @@ SLIDES.push({ title:"W4 Theory", html:`
       {cls:'c-gate', tag:'GOLDEN SET',           def:'~200-500 Q/A з GT, покриває happy/edge/adversarial. Versioned. Expand monthly.'},
       {cls:'c-gate', tag:'OTEL GENAI SEMCONV',   def:'Standard span attrs: gen_ai.system, model, input/output tokens, cost. Grafana дашборди.'},
       {cls:'c-out',  tag:'BUSINESS METRICS',     def:'Containment rate · CSAT · deflection · cost/case · drop-off. Робить ROI видимим.'},
-      {cls:'c-out',  tag:'COST MODEL',           def:'Per-case: tokens × $/1k + tool $$. При N=10k/день: $0.07/case × 10k = $700/день = $21k/міс.'},
+      {cls:'c-out',  tag:'COST MODEL',           def:'Per-case: tokens × $/1k + tool $$. На PB scale 14k/день (consumer loans): ~$0.47/case = ~$6.6k/день = ~$200k/міс. Incremental AI-only: ~$0.01/case.'},
     ])}
     <div class="strip"><b>ТЕСТ:</b> якщо не можете показати один дашборд CTO з 5 KPI — ви не знаєте, що в проді.</div>
   </div>
@@ -2747,26 +3260,26 @@ SLIDES.push({ title:"GenAI Observability", html:`
 // --- Slide: FinOps & Funnel Economics ---
 SLIDES.push({ title:"FinOps & Economics", html:`
 <div class="slide">
-  <div class="slide-title">FinOps & Funnel Economics · <span class="accent">вартість на скейлі 10k/день</span></div>
-  <div class="slide-subtitle">Воронка кредитного конвеєра: чому зовнішні API дорожчі за LLM та як вийти на $2.56 за заявку</div>
+  <div class="slide-title">FinOps & Funnel Economics · <span class="accent">PB-scale: 14k/день consumer loans</span></div>
+  <div class="slide-subtitle">Воронка кредитного конвеєра: incremental AI cost — $0.01/case; full case з платними API — ~$0.50/case</div>
   <div class="content">
     <div class="split-22">
       <div class="card c-std">
-        <div class="card-tag">FUNNEL ECONOMICS · ВОРОНКА КОНВЕРСІЇ (10K СТАРТІВ)</div>
+        <div class="card-tag">FUNNEL ECONOMICS · ВОРОНКА КОНВЕРСІЇ (14K СТАРТІВ / ДЕНЬ)</div>
         <div class="card-body" style="font-size:0.84em; line-height:1.6">
-          <p><b style="color:var(--accent)">10 000 стартів чату (Intake):</b><br>
-          Клієнти відкрили діалог. Використовується дешевий <b>Tier 1 Fast LLM</b> ($0.15 / 1M токенів). Витрати: $0.0003 на сесію.</p>
-          <p style="margin-top:0.45em"><b style="color:var(--box-sp)">7 000 доходять до перевірки KYC / Docs:</b><br>
-          30% відсіялися або закрили чат. OCR документів виконується локально.</p>
-          <p style="margin-top:0.45em"><b style="color:var(--warning)">5 000 проходять Consent Gate до запиту БКІ:</b><br>
-          <b style="color:var(--error)">Увага:</b> виклик Бюро коштує <b>$8.50</b>! Завдяки Consent Gate та відкладеному виклику банк економить <b>$42 500 щодня</b> на відсіяних користувачах.</p>
-          <p style="margin-top:0.45em"><b style="color:var(--accent)">3 000 схвалених оферів ──► 2 000 підписаних договорів:</b><br>
+          <p><b style="color:var(--accent)">14 000 стартів чату (Intake):</b><br>
+          Клієнти відкрили діалог у Privat24. Використовується дешевий <b>Tier 1 Fast LLM</b> ($0.15 / 1M токенів). Витрати: ~$0.0003 на сесію.</p>
+          <p style="margin-top:0.45em"><b style="color:var(--box-sp)">10 000 доходять до перевірки KYC / Docs:</b><br>
+          ~28% відсіялися або закрили чат. OCR документів виконується локально.</p>
+          <p style="margin-top:0.45em"><b style="color:var(--warning)">7 000 проходять Consent Gate до запиту UBKI:</b><br>
+          <b style="color:var(--error)">Увага:</b> виклик Бюро коштує <b>~$1.50</b> (UAH 50–80). Завдяки Consent Gate банк економить <b>~$10.5k щодня</b> ($1.50 × 7k відсіяних) — за рік це ~$3.8M.</p>
+          <p style="margin-top:0.45em"><b style="color:var(--accent)">4 000 схвалених оферів ──► 2 800 підписаних договорів:</b><br>
           Складне андеррайтингове міркування (Tier 2 Reasoning LLM) викликається лише для тих, хто пройшов жорсткі первинні фільтри.</p>
         </div>
       </div>
 
       <div class="card c-out">
-        <div class="card-tag">РОЗБИВКА СОБІВАРТОСТІ ЗАЯВКИ ($2.56 / CASE)</div>
+        <div class="card-tag">РОЗБИВКА СОБІВАРТОСТІ ЗАЯВКИ (~$0.47 / CASE)</div>
         <div class="card-body" style="font-size:0.84em; line-height:1.6">
           <table class="mini-table" style="margin-top:0.2em">
             <thead><tr><th>Компонент</th><th>Обсяг / Тип</th><th>Вартість</th></tr></thead>
@@ -2774,19 +3287,20 @@ SLIDES.push({ title:"FinOps & Economics", html:`
               <tr><td>Intake & Router</td><td>Tier 1 Fast LLM (2k токенів)</td><td class="num">$0.0004</td></tr>
               <tr><td>Grounding Policies</td><td>Prompt Caching (80% cache hit)</td><td class="num">$0.0008</td></tr>
               <tr><td>Underwriter Reasoning</td><td>Tier 2 Frontier LLM (1k токенів)</td><td class="num">$0.0050</td></tr>
-              <tr><td>Credit History (БКІ)</td><td>Зовнішній платний API ($8.50 × 0.3)</td><td class="num" style="color:var(--warning); font-weight:700">$2.5500</td></tr>
+              <tr style="background:rgba(0,246,255,0.07)"><td><b>Incremental AI (sum)</b></td><td>LLM-only, що додається до legacy OpEx</td><td class="num" style="color:var(--accent); font-weight:700">~$0.01</td></tr>
+              <tr><td>Credit History (UBKI)</td><td>Зовн. API, бо platний вже в legacy ($1.50 × 0.3 funnel)</td><td class="num" style="color:var(--text-dim)">$0.4500</td></tr>
               <tr><td>Інфраструктура & Logs</td><td>K8s, pgvector, Langfuse traces</td><td class="num">$0.0038</td></tr>
-              <tr style="border-top:2px solid var(--accent)"><td><b>РАЗОМ ЗА ЗАЯВКУ</b></td><td><b>Повний завершений цикл</b></td><td class="num" style="color:var(--accent); font-weight:700">~$2.56</td></tr>
+              <tr style="border-top:2px solid var(--accent)"><td><b>РАЗОМ ЗА ЗАЯВКУ</b></td><td><b>Full case (inc. legacy bureau)</b></td><td class="num" style="color:var(--accent); font-weight:700">~$0.47</td></tr>
             </tbody>
           </table>
-          <div style="margin-top:0.45em; padding:0.4em 0.6em; background:rgba(0,255,127,0.08); border-left:3px solid var(--success); font-size:0.9em">
-            <b>ПОРІВНЯННЯ З ТРАДИЦІЙНИМ БАНКОМ:</b> Ручна обробка оператором контакт-центру та андеррайтером коштує <b>$12–20</b>. AI Copilot знижує чистий OpEx у <b>5–7 разів</b>.
+          <div style="margin-top:0.45em; padding:0.4em 0.6em; background:rgba(0,255,127,0.08); border-left:3px solid var(--success); font-size:0.85em">
+            <b>НА PB SCALE (5M/рік):</b> Full-case cost 5M × $0.47 = <b>~$2.35M/рік</b>. Legacy manual flow 5M × $3.50 avg = <b>~$17.5M/рік</b>. Delta → <b>~$15M saved + ~$8.7M operator time</b> (сум. ~$24M/рік).
           </div>
         </div>
       </div>
     </div>
     <div class="strip">
-      <b>ГОЛОВНИЙ ВИСНОВОК FINOPS:</b> У кредитуванні 85–90% витрат формують зовнішні платні API (БКІ, перевірка реєстрів), а не токени LLM. Найкраща FinOps-оптимізація — це не зміна моделі, а архітектурне перенесення дорогих інструментів у самий кінець воронки після безкоштовних перевірок!
+      <b>ГОЛОВНИЙ ВИСНОВОК FINOPS:</b> Якщо дивитися на <b>incremental AI cost</b>, LLM додає лише ~$0.01/case до того, що банк вже платить. 95%+ собівартості — це зовнішні API (UBKI, реєстри), які банк оплачує і сьогодні. Головний важіль FinOps — перенесення платних tool-calls <b>у кінець funnel</b> через Consent Gate.
     </div>
   </div>
   ${gloss([["FinOps","Financial Operations for Cloud/AI"],["OpEx","Operational Expenditure"],["TCO","Total Cost of Ownership"],["API","Application Programming Interface"]])}
@@ -2795,7 +3309,7 @@ SLIDES.push({ title:"FinOps & Economics", html:`
     <p><b>1. Головний парадокс AI-економіки в банку:</b></p>
     <ul>
       <li>Коли розробники обговорюють вартість AI, вони 90% часу сперечаються про ціну токенів GPT-4o проти Claude 3.5 Sonnet чи open-source моделей на власних GPU.</li>
-      <li>Але коли ви подивитеся на реальний фінансовий P&L кредитного конвеєра, ви побачите вражаючу річ: <b>усі токени разом узяті коштують менше 1 цента ($0.006) на заявку</b>! А один виклик зовнішнього Бюро кредитних історій коштує <b>$8.50</b>.</li>
+      <li>Але коли ви подивитеся на реальний фінансовий P&L кредитного конвеєра, ви побачите вражаючу річ: <b>усі токени разом узяті коштують менше 1 цента ($0.006) на заявку</b>! А один виклик зовнішнього UBKI коштує <b>~$1.50</b> (UAH 50–80).</li>
       <li>Це означає, що якщо недосвідчений архітектор поставить виклик БКІ на початок процесу (щоб "відразу знати скоринг"), банк збанкрутує на рахунках від Бюро за клієнтів, які просто бавилися в чаті й кинули його через хвилину.</li>
     </ul>
 
@@ -2936,7 +3450,7 @@ SLIDES.push({ title:"W4 Use-case", html:`
             <tr><td>Band accuracy</td><td>Correctness</td><td class="num">≥92%</td></tr>
             <tr><td>Prompt-injection resist</td><td>Robustness</td><td class="num">≥95%</td></tr>
             <tr><td>P50 latency (eligibility)</td><td>Latency</td><td class="num">≤3с</td></tr>
-            <tr><td>Cost / full case</td><td>Cost</td><td class="num">≤$0.08</td></tr>
+            <tr><td>Cost / full case</td><td>Cost</td><td class="num">≤$0.50</td></tr>
             <tr><td>Containment rate</td><td>Business</td><td class="num">≥65%</td></tr>
           </tbody>
         </table>
@@ -2944,8 +3458,9 @@ SLIDES.push({ title:"W4 Use-case", html:`
     </div>
     <div class="grid-2">
       <div class="card c-sp"><div class="card-tag">LLM-JUDGE SPEC</div><div class="card-body" style="font-size:0.78em">Rubric: 5 dims (groundedness/safety/clarity/correctness/refusal). Scale 1-5. Judge model: Frontier GenAI model (LLM-as-a-judge). Calibration: 50 human-rated.</div></div>
-      <div class="card c-out"><div class="card-tag">COST MODEL · 10K/ДЕНЬ</div><div class="card-body" style="font-size:0.78em; font-family:var(--font-mono); line-height:1.6">prompt 2k × $0.002 = $0.004<br>completion 500 × $0.008 = $0.004<br>tools (credit_history $8.50 × 0.3) = $2.55<br><b style="color:var(--accent)">= ~$2.56/case × 10k = $25.6k/день</b></div></div>
+      <div class="card c-out"><div class="card-tag">COST MODEL · 14K/ДЕНЬ (PB SCALE)</div><div class="card-body" style="font-size:0.78em; font-family:var(--font-mono); line-height:1.6">prompt 2k × $0.002 = $0.004<br>completion 500 × $0.008 = $0.004<br>tools (UBKI $1.50 × 0.3) = $0.45<br><b style="color:var(--accent)">= ~$0.47/case × 14k = ~$6.6k/день</b><br><span style="color:var(--text-dim)">incremental AI only: $0.01/case → $140/день</span></div></div>
     </div>
+    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.08); margin-top:0.3em"><b style="color:var(--accent)">🎬 LIVE · CodeMie demo:</b> запуск eval runner + відкриття Langfuse dashboard у CodeMie Observability. Повний Golden Set + 7 metrics + CI gate — у домашнє · <code>module_4_production/02-exercise.md</code>.</div>
   </div>
   ${gloss([["Q/A","Question/Answer"],["GT","Ground Truth"]])}
 </div>`, notes:`
@@ -2960,7 +3475,7 @@ SLIDES.push({ title:"W4 Use-case", html:`
   <li><b>3. Панель моніторингу в Langfuse / Phoenix:</b>
     <br>Інтеграція дає можливість у реальному часі бачити графіки затримок (P50, P95, P99), розподіл витрат за категоріями моделей (Fast Tier vs Reasoning Tier) та журнал усіх запитів клієнтів із можливістю детального аналізу будь-якої проблемної сесії.</li>
   <li><b>4. Економічна модель переходу від PoC до Production:</b>
-    <br>Таблиця розрахунку витрат: показує динаміку вартості при масштабуванні від 100 заявок на день на етапі тестування до 10 000 заявок на день у повному продакшні з урахуванням оптимізацій (Prompt Caching, гібридна маршрутизація моделей).</li>
+    <br>Таблиця розрахунку витрат: показує динаміку вартості при масштабуванні від 100 заявок на день на етапі тестування до 14 000 заявок на день (PB consumer-loans scale) у повному продакшні з урахуванням оптимізацій (Prompt Caching, гібридна маршрутизація моделей).</li>
 </ul>
 <p>Цей стенд є фінальним практичним артефактом курсу, який студенти можуть забрати у свої проєкти як готовий фреймворк тестування.</p>
 `});
@@ -3188,7 +3703,147 @@ function render(updateHash = true) {
   if (updateHash && window.location.hash !== `#${current + 1}`) {
     history.replaceState(null, '', `#${current + 1}`);
   }
+  // enhance ka-boxes (icon + flip) BEFORE wire-draw so layout settles
+  enhanceKaBoxes(stage);
+  // draw flow wires after layout settles
+  requestAnimationFrame(() => {
+    stage.querySelectorAll('[data-flow]').forEach(drawFlowWires);
+  });
 }
+
+// Keyword → Lucide icon mapper (first match wins; order = priority)
+const KA_ICON_RULES = [
+  // Very specific first — avoid substring collisions
+  [/langgraph|temporal|workflow|orchestrat|durable/i,                 'i-workflow'],
+  [/kafka|debezium|\bcdc\b|event bus|event backbone|streams?\b/i,     'i-zap'],
+  [/kyc|sanction|\bpep\b|anonymiz|anonymis|\bpii\b|guard\s*rail|output filter|output guard|fairness|audit|compliance|\bfeat\b|shield/i, 'i-shield-check'],
+  [/rbac|\btoken\b(?! arbitrage| econom)|secret|vault/i,              'i-lock'],
+  [/gateway|router|traffic controller|intent|\bfork\b|\bsplit\b/i,    'i-git-fork'],
+  [/mlflow|tracking|experiment|automl|metric|drift|dashboard|monitor|analytic|chart|score|funnel|kpi/i, 'i-chart'],
+  [/vector\s*db|milvus|pinecone|data\s*lake|feature\s*store|neo4j|knowledge graph|model registry|\bregistry\b/i, 'i-database'],
+  [/sandbox|µvm|microvm|container|\bk8s\b|\beks\b|\baks\b|microservice|middleware|cpu|real-time api/i, 'i-cpu'],
+  [/cost|arbitrage|dollar|\busd\b|revenue|economics|budget|per[- ]token|\bspend/i, 'i-dollar'],
+  [/incident|playbook|rollback|dead-letter|\bfail/i,                  'i-alert-triangle'],
+  [/approval workflow|committee|ethics board|end users|\busers?\b/i,  'i-users'],
+  [/handshake|accept|approve|agreement/i,                             'i-handshake'],
+  [/signature|e-sign|sign_aw|sign aw|contract\.sign/i,                'i-signature'],
+  [/id\s*card|identity|passport/i,                                    'i-id-card'],
+  [/scale|policy|underwrit|rule|judge/i,                              'i-scale'],
+  [/timer|wait|pause|delay|timeout|retry/i,                           'i-timer'],
+  [/browser|chat ui|web ui|mobile ui|\bui\b/i,                        'i-browser'],
+  [/\bide\b|cursor|vs ?code|jetbrains|windsurf/i,                     'i-code'],
+  [/\bcli\b|terminal|shell/i,                                         'i-terminal'],
+  [/cloud agents?|aws\b|azure|\bgcp\b|bedrock|foundry|serverless/i,   'i-cloud'],
+  [/\bapi\b|rest|http|webhook/i,                                      'i-globe'],
+  [/share|publish|broadcast|handoff|export|a2a/i,                     'i-share'],
+  [/\bci\b|\bcd\b|code review|build/i,                                'i-git-branch'],
+  [/artifact|package|\bsdk\b|release/i,                               'i-package'],
+  [/\bocr\b|contract|template|verify_before|document/i,               'i-file-text'],
+  [/supervisor|sub[-\s]?agents?|dispute|refund|payment agent|product agent|chatbot|intake|offer|dialogue|dialog|\bbot\b|assistant|agents?\b/i, 'i-bot'],
+  [/llm|gpt|openai|frontier|anthropic|\bmodel\b/i,                    'i-bot'],
+];
+function kaIconFor(text) {
+  for (const [re, id] of KA_ICON_RULES) if (re.test(text)) return id;
+  return 'i-cpu';
+}
+
+function enhanceKaBoxes(root) {
+  root.querySelectorAll('.ka-box').forEach(box => {
+    if (box.classList.contains('ka-flip')) return; // already done
+    const titleEl = box.querySelector('b');
+    const subEl = box.querySelector('span:not(.ka-ico)');
+    if (!titleEl) return;
+    const title = titleEl.textContent.trim();
+    const sub = subEl ? subEl.textContent.trim() : '';
+    const lane = (box.closest('.ka-layer')?.querySelector('.ka-tag')?.textContent || '').replace(/\s+/g,' ').trim();
+    const ic = kaIconFor(title + ' ' + sub);
+    const front = `
+      <div class="ka-face ka-front">
+        <div class="ka-front-head"><svg class="ka-ico"><use href="#${ic}"/></svg><b>${title}</b></div>
+        ${sub ? `<span>${sub}</span>` : ''}
+      </div>`;
+    const back = `
+      <div class="ka-face ka-back">
+        <div>
+          ${lane ? `<div class="ka-back-lane">${lane}</div>` : ''}
+          <div class="ka-back-title">${title}</div>
+          ${sub ? `<div class="ka-back-body">${sub}</div>` : ''}
+        </div>
+        <div class="ka-back-hint">← back</div>
+      </div>`;
+    box.innerHTML = `<div class="ka-inner">${front}${back}</div>`;
+    box.classList.add('ka-flip');
+    box.setAttribute('tabindex', '0');
+    box.setAttribute('role', 'button');
+    box.setAttribute('onclick', "this.classList.toggle('is-flipped')");
+    box.setAttribute('onkeydown', "if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}");
+  });
+}
+
+// ============ FLOW WIRES ============
+function drawFlowWires(root) {
+  const svg = root.querySelector('.flow-wires');
+  if (!svg) return;
+  const cards = [...root.querySelectorAll('.flow-card')];
+  if (cards.length < 2) return;
+  const rb = root.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${rb.width} ${rb.height}`);
+  const port = (c) => {
+    const r = c.getBoundingClientRect();
+    return {
+      x: r.left - rb.left, y: r.top - rb.top, w: r.width, h: r.height,
+      row: +(c.style.gridRow || c.dataset.row || 1),
+      col: +(c.style.gridColumn || c.dataset.col || 1),
+      kind: c.dataset.kind || ''
+    };
+  };
+  const pts = cards.map(port);
+  let paths = '';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i+1];
+    let d, cls = `wire wire-${b.kind}`;
+    if (a.row === b.row) {
+      // same row — straight horizontal between card edges
+      const leftToRight = b.col > a.col;
+      const ax = leftToRight ? a.x + a.w : a.x;
+      const ay = a.y + a.h / 2;
+      const bx = leftToRight ? b.x : b.x + b.w;
+      const by = b.y + b.h / 2;
+      d = `M ${ax} ${ay} L ${bx} ${by}`;
+    } else {
+      // row change — straight down if same column, curve otherwise
+      cls = 'wire wire-turn';
+      const ax = a.x + a.w / 2;
+      const ay = a.y + a.h;              // bottom of a
+      const bx = b.x + b.w / 2;
+      const by = b.y;                     // top of b
+      if (Math.abs(ax - bx) < 3) {
+        d = `M ${ax} ${ay} L ${bx} ${by}`;
+      } else {
+        const mid = (ay + by) / 2;
+        d = `M ${ax} ${ay} C ${ax} ${mid}, ${bx} ${mid}, ${bx} ${by}`;
+      }
+    }
+    paths += `<path class="${cls}" d="${d}" marker-end="url(#arrh)"/>`;
+  }
+  svg.innerHTML = `
+    <defs>
+      <marker id="arrh" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+      </marker>
+    </defs>
+    ${paths}
+  `;
+}
+
+// redraw wires on viewport changes
+let wireRaf;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(wireRaf);
+  wireRaf = requestAnimationFrame(() => {
+    document.querySelectorAll('[data-flow]').forEach(drawFlowWires);
+  });
+});
 
 function next() { if (current < SLIDES.length - 1) { current++; render(); } }
 function prev() { if (current > 0) { current--; render(); } }
