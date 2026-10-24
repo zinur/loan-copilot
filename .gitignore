@@ -7,6 +7,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.serena/
 *.jsonl
 !module_4_production/data/*.jsonl
 module_4_production/data/eval_runs/
