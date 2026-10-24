@@ -1,4 +1,8 @@
-# 03 · Exercise · ваша W2 лаба — Grounding, Consent Gate та аудит НБУ
+# 03 · Exercise · ваша W2 **домашня** лаба — Grounding, Consent Gate та аудит НБУ
+
+> ⏱ **~90–120 хв · самостійно після вебінару** · на занятті ми лише показуємо implementation у CodeMie
+> 🤖 **Vibe-code OK** — Claude Code / Cursor / CodeMie Code
+> 📎 Пов'язано: [`02-rag-tuning-lab.md`](./02-rag-tuning-lab.md) — опціональний RAG-tuning expedition (+30–45 хв, можна зробити пізніше)
 
 ## Learning objective
 
@@ -30,7 +34,7 @@ python -m module_2_grounding.src.rag_lab
 
 ### 2. Реалізуйте Consent Gate у `src/tool_contracts.py`
 
-У кредитному конвеєрі виклик `credit_history_pull` коштує $8.50 і є юридично чутливим.
+У кредитному конвеєрі виклик `credit_history_pull` коштує ~$1.50 (UBKI, UAH 50–80 за lookup) і є юридично чутливим.
 * Відкрийте `module_2_grounding/src/tool_contracts.py`.
 * Переконайтеся, що функція `credit_history_pull` перевіряє вхідний аргумент `consent_id`:
   * Якщо `consent_id` порожній або не починається з `consent-` — генерується помилка доступу (`PermissionError` або словник `{"error": "CONSENT_REQUIRED"}`).

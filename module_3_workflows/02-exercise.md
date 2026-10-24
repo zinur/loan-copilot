@@ -1,4 +1,8 @@
-# 02 · Exercise · ваша W3 лаба — Durable Workflows, HITL та Saga-відкати
+# 02 · Exercise · ваша W3 **домашня** лаба — Durable Workflows, HITL та Saga-відкати
+
+> ⏱ **~120–150 хв · самостійно після вебінару** · це найважча лаба курсу · на занятті показуємо implementation у CodeMie workflows
+> 🤖 **Vibe-code OK** — але починайте з graph skeleton; Saga-відкат і idempotency barrier спробуйте написати власноруч, навіть якщо повільніше (це тема, що найчастіше з'являється на співбесідах на SA-роль)
+> 💡 Якщо застрягли на LangGraph API — переключитись на псевдокод і описати state transitions, це все одно зарахується
 
 ## Learning objective
 
