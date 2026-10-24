@@ -1,0 +1,133 @@
+# ─────────────────────────────────────────────────────────────────────
+# LLM Gateway configuration pointer — W2
+#
+# CodeMie сам є LLM Gateway (LiteLLM всередині + routing + budgets).
+# Цей файл — reference що саме треба налаштувати у CodeMie Admin →
+# AI Models + Projects + Guardrails, щоб assistant-и W2 відповідали
+# банківській таємниці та NBU constraints.
+#
+# НЕ імпортується як YAML у CodeMie — це checklist для адміна.
+# ─────────────────────────────────────────────────────────────────────
+
+llm_gateway:
+
+  # ──────────── Primary deployment: on-prem DIAL ────────────
+  primary:
+    provider: dial  # EPAM Delivery InnovAtion Lab — on-prem private LLM gateway
+    endpoint: https://dial.<pb-internal>/v1
+    data_residency: UA  # або EU — узгоджено з CISO
+    data_retention: zero  # DPA підписаний: ніяких training logs
+    models:
+      - alias: fast-tier
+        upstream: azure-openai/gpt-4.1-mini
+        price_per_1m_tokens:
+          prompt: 0.15
+          completion: 0.60
+          cached_prompt: 0.075  # 50% знижка на prompt cache
+      - alias: reasoning-tier
+        upstream: azure-openai/gpt-4.1
+        price_per_1m_tokens:
+          prompt: 2.50
+          completion: 10.00
+          cached_prompt: 0.625
+
+  # ──────────── Fallback: Azure OpenAI EU (compromise з NBU letter) ────────────
+  fallback:
+    provider: azure-openai
+    endpoint: https://<pb-azure-eu-private>.openai.azure.com
+    data_residency: EU  # Netherlands West — найближчий регіон з UA no-objection
+    data_retention: zero
+    # Trigger: 5xx з DIAL > 2 min OR rate-limit > 80% на DIAL
+    conditions:
+      - dial_5xx_sustained_min: 2
+      - dial_rate_limit_percent: 80
+
+  # ──────────── Routing per assistant (W2 agents) ────────────
+  routing:
+    intake-agent:
+      model: fast-tier    # дешева модель для збору anketa
+      max_prompt_tokens: 2000
+      max_completion_tokens: 500
+    eligibility-agent:
+      model: fast-tier    # RAG grounded, не reasoning-heavy
+      max_prompt_tokens: 4000  # chunks з datasource
+      max_completion_tokens: 600
+      prompt_caching:
+        enabled: true
+        cache_key_fields: [system_prompt, datasource_chunks]
+        min_tokens_for_cache: 1024  # Azure/Anthropic cache thresholds
+    risk-agent:
+      model: fast-tier    # tool-calling, не reasoning
+      max_prompt_tokens: 2000
+      max_completion_tokens: 400
+    underwriter:
+      model: reasoning-tier  # finalне рішення — варто дорого
+      max_prompt_tokens: 1500
+      max_completion_tokens: 800
+
+  # ──────────── Guardrails на gateway level ────────────
+  guardrails:
+    pii_masking:
+      enabled: true
+      strategy: deterministic+ner_fallback
+      patterns:
+        - pan: '\b(?:4|5)\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'   # Visa/MC Luhn
+        - iban_ua: '\bUA\d{2}\d{6}[\s-]?\d{19}\b'
+        - phone_ua: '\+380\d{9}'
+        - tax_id: '\b\d{10}\b'  # ІПН pattern
+      replace_with: "[REDACTED-{{type}}]"
+      log_matches: true  # у Langfuse, НЕ у plaintext logs
+    output_filters:
+      refusal_patterns:
+        - toxic
+        - jailbreak
+        - price_commitment_without_source  # Air Canada case
+      max_output_tokens_hard: 2000
+    prompt_injection_detection:
+      enabled: true
+      model: NeMo Guardrails + classifier LLM
+      block_patterns:
+        - 'ignore (previous|all) (instructions|rules)'
+        - 'SYSTEM: Override policy'
+        - 'you are (?:now|actually) (?:a|an) different'
+
+  # ──────────── Budgets ────────────
+  budgets:
+    per_user_per_day_uah: 100  # ~$2.50 — обмежує abuse / loop costs
+    per_assistant_per_hour_usd:
+      intake-agent: 50
+      eligibility-agent: 100
+      risk-agent: 50
+      underwriter: 200
+    daily_tenant_cap_usd: 500  # hard-stop для tenant, якщо щось пішло не так
+    alert_at_percent: 75
+
+  # ──────────── Observability ────────────
+  observability:
+    langfuse:
+      enabled: true
+      endpoint: http://langfuse.<pb-internal>:3000
+      api_key_secret: langfuse-api-key  # у CodeMie Secrets
+      sample_rate: 1.0  # 100% capture для audit
+    otel:
+      enabled: true
+      exporter: otlp
+      endpoint: http://otel-collector.<pb-internal>:4317
+      semantic_conventions: genai  # OTel GenAI semconv
+
+# ─────────────────────────────────────────────────────────────────────
+# CodeMie Admin UI mapping (як саме це конфігурується):
+#
+# | Config block           | CodeMie Admin location                        |
+# |------------------------|-----------------------------------------------|
+# | primary / fallback     | AI Models → + Add LLM provider                |
+# | routing per assistant  | Assistant edit → Model dropdown + Advanced    |
+# | pii_masking            | Project → Guardrails → DLP policy              |
+# | output_filters         | Project → Guardrails → Output filter policy   |
+# | prompt_injection       | Project → Guardrails → Input filter policy    |
+# | budgets                | Admin → Billing → Budget caps per project     |
+# | langfuse / otel        | Admin → Observability → Integrations          |
+#
+# Більшість з цього вже є у CodeMie 2.59+. Config як код (цей YAML) —
+# для disaster-recovery / IaC export. Основне джерело правди — UI.
+# ─────────────────────────────────────────────────────────────────────

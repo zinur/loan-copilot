@@ -1,0 +1,161 @@
+# ─────────────────────────────────────────────────────────────────────
+# W2 tool contracts — OpenAI function schemas for CodeMie Tools registry
+#
+# Attach у CodeMie UI: Tools → + Create Tool → paste schema → Save.
+# Потім у кожного worker-assistant (risk-agent): Assistant → Tools →
+# multi-select → attach відповідні.
+#
+# Для mock-режиму (під час workshop) — секція mock_responses нижче
+# використовується CodeMie MCP mock-server або локальним endpoint у
+# module_2_grounding/src/tool_contracts.py.
+# ─────────────────────────────────────────────────────────────────────
+
+tools:
+
+  # ──────────── 1. kyc.lookup ────────────
+  - name: kyc.lookup
+    description: >
+      Санкційний скринінг та PEP check за ІПН клієнта.
+      Side-effect: external-read (query до реєстру РНБО, OFAC, UN sanctions,
+      WorldCheck + внутрішнього PEP registry).
+    attach_to: [risk-agent]
+    rbac_roles: [kyc_officer, loan_officer, orchestrator]
+    cost_usd: 0.80
+    rate_limit_per_min: 5
+    openai_function_schema:
+      name: kyc_lookup
+      description: >
+        Perform KYC check against sanctions registries (РНБО, OFAC, UN,
+        WorldCheck) and internal PEP database.
+      parameters:
+        type: object
+        properties:
+          tax_id:
+            type: string
+            pattern: "^[0-9]{10}$"
+            description: 10-digit Ukrainian tax ID (ІПН)
+        required: [tax_id]
+    mock_responses:
+      "1234567890": {passed: true,  sanctions: false, pep: false}
+      "9876543210": {passed: true,  sanctions: false, pep: false}
+      "5555555555": {passed: false, sanctions: true,  pep: false}
+      "4444444444": {passed: false, sanctions: false, pep: true}
+      "_default":   {passed: true,  sanctions: false, pep: false}
+
+  # ──────────── 2. credit_history.pull ────────────
+  - name: credit_history.pull
+    description: >
+      Запит кредитної історії з Українського Бюро Кредитних Історій (УБКІ).
+      Side-effect: external-read (платний запит у UBKI, ~UAH 50–80 ≈ $1.50/call).
+      **Consent Gate обов'язковий:** без валідного consent_id — tool
+      повертає помилку та записує BLOCKED_NO_CONSENT у audit log.
+    attach_to: [risk-agent]
+    rbac_roles: [loan_officer, credit_analyst, orchestrator]
+    consent_required: true  # <-- enforced у tool implementation
+    cost_usd: 1.50
+    rate_limit_per_min: 10
+    openai_function_schema:
+      name: credit_history_pull
+      description: >
+        Pull borrower credit history from Ukrainian Bureau of Credit
+        Histories (UBKI). REQUIRES valid consent_id — call will fail
+        otherwise with CONSENT_REQUIRED error.
+      parameters:
+        type: object
+        properties:
+          tax_id:
+            type: string
+            pattern: "^[0-9]{10}$"
+          consent_id:
+            type: string
+            pattern: "^consent-[a-zA-Z0-9-]+$"
+            description: >
+              Recorded consent token. Must exist in consent_registry
+              with timestamp. Example `consent-2026-10-24-abc123`.
+        required: [tax_id, consent_id]
+    mock_responses:
+      # synced with module_4_production/data/golden_qa.jsonl и common/scenario_data
+      "1234567890": {score: 720, arrears: [],              status: ok}
+      "9876543210": {score: 580, arrears: ["LN-2024-0042"], status: ok}
+      "5555555555": {score: 650, arrears: [],              status: ok}
+      "_default":   {score: 650, arrears: [],              status: ok}
+    error_responses:
+      no_consent:
+        code: CONSENT_REQUIRED
+        message: >
+          Запит УБКІ без явної згоди клієнта заборонений (ЗУ "Про захист
+          персональних даних" Ст. 7). Operation blocked, audit event
+          BLOCKED_NO_CONSENT written.
+
+  # ──────────── 3. risk.score ────────────
+  - name: risk.score
+    description: >
+      Внутрішня скорингова модель банку. Приймає bureau_score + income +
+      amount + term, повертає risk_band (A/B/C/D) + PTI + suggested_rate.
+      Side-effect: internal-write у risk_registry + audit event.
+      Правила: SOP-CREDIT-02 §5 (policy matrix).
+    attach_to: [risk-agent]
+    rbac_roles: [risk_analyst, loan_officer, orchestrator]
+    cost_usd: 0.05
+    rate_limit_per_min: 60
+    openai_function_schema:
+      name: risk_score
+      description: >
+        Run internal risk scoring model and record result in risk_registry.
+        Returns 4-tier policy band (A/B/C/D) with PTI and suggested APR.
+      parameters:
+        type: object
+        properties:
+          tax_id:
+            type: string
+            pattern: "^[0-9]{10}$"
+          bureau_score:
+            type: integer
+            minimum: 300
+            maximum: 850
+          monthly_income:
+            type: number
+            minimum: 0
+          amount:
+            type: number
+            minimum: 1000
+          term_months:
+            type: integer
+            minimum: 6
+            maximum: 60
+        required: [tax_id, bureau_score, monthly_income, amount, term_months]
+    mock_responses:
+      # Policy matrix (SOP-CREDIT-02 §5): bureau_score + pti thresholds
+      # mock computes:  band = f(bureau_score), pti = (amount/term*0.015)/income
+      # Приклад: 1234567890 → score 720, income 35000, amount 150000, term 24
+      #   → monthly_payment ~7500, pti ~0.21, band A, rate 18.5
+      _rule: >
+        band = "A" if bureau_score >= 700 and pti <= 0.35 else
+               "B" if bureau_score >= 620 and pti <= 0.45 else
+               "C" if bureau_score >= 550 and pti <= 0.50 else
+               "D"
+        suggested_rate = {"A": 18.5, "B": 22.0, "C": 26.5, "D": None}[band]
+
+# ─────────────────────────────────────────────────────────────────────
+# Deployment notes:
+#
+# 1. Mock mode (workshop) — CodeMie не має вбудованого mock executor для
+#    OpenAI function tools. 2 варіанти:
+#
+#    a) MCP mock-server: запусти локальний MCP server, що читає цей YAML
+#       і повертає mock_responses за tax_id. Прикріпи до assistant як MCP.
+#
+#    b) Inline у system prompt (простіше для workshop):
+#       У ws_risk.prompt.md додай "Mock lookup table" секцію з цими
+#       самими даними, та інструкцію "НЕ викликай tool, повертай з таблиці".
+#
+# 2. Production — свопнути mock_responses на реальні integration:
+#    - kyc.lookup → MCP server з РНБО/WorldCheck API
+#    - credit_history.pull → UBKI SOAP/REST client
+#    - risk.score → internal gRPC до risk-model-service
+#
+# 3. Consent Gate enforcement — не покладайтеся лише на prompt discipline.
+#    Tool implementation (Python wrapper навколо UBKI client) має сам
+#    перевіряти consent_id у БД перед викликом + писати audit event.
+#    Prompt discipline — second layer, не first.
+# ─────────────────────────────────────────────────────────────────────

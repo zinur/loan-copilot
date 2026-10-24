@@ -1,0 +1,286 @@
+# ─────────────────────────────────────────────────────────────────────
+# ALTERNATIVE DEPLOYMENT — W2 Sequential workflow (grounded + tools).
+#
+# Основний шлях на воркшопі — Option B: parent orchestrator з
+# `assistant_ids` + 2 нові worker-assistants (eligibility, risk) з real
+# tools та RAG datasource. Детально: HOW_TO_DEPLOY.md.
+#
+# Цей YAML збережений як reference для compliance-first use-case, де
+# потрібен deterministic routing (NBU audit, dual-control на consent).
+#
+# Deploy: Workflows → + Create Workflow → YAML view → paste → Save.
+# ─────────────────────────────────────────────────────────────────────
+
+# CodeMie Workflow · Loan Copilot W2 — Grounded (RAG + Tools + Gateway)
+# ----------------------------------------------------------------------------
+# W2 додає поверх W1:
+#   • eligibility-state — Hybrid RAG на POL/SOP/REG датасорсі з citations
+#   • kyc-state         — real tool call (kyc.lookup replace mock)
+#   • consent-gate      — explicit interrupt_before для recording consent_id
+#   • credit-history-state — real tool call (credit_history.pull з consent_id)
+#   • risk-state        — risk.score tool (internal write + audit)
+#
+# END-STATE: Loan Copilot більше не галюцинує політики банку (всі
+# відповіді з obov'язковою цитатою [POL-LOAN-* §X]), UBKI недоступний
+# без consent_id, PII маскується на gateway.
+#
+# ПЕРЕДУМОВИ (CodeMie UI):
+#   1. 2 worker-assistants створені зі slug'ами:
+#        eligibility-agent  (з attached datasource `loan-policies-ds`)
+#        risk-agent         (з attached tools: kyc.lookup, credit_history.pull, risk.score)
+#   2. Datasource `loan-policies-ds` з контентом module_2_grounding/data/policies/
+#      (POL-LOAN-01.md, SOP-CREDIT-02.md, REG-NBU-351.md)
+#   3. Tools зареєстровані у tenant (див. tool_contracts.yaml.alt)
+#   4. LLM Gateway config вказує на DIAL on-prem або Azure OpenAI EU private endpoint
+#      (детально у gateway_config.yaml.alt)
+# ----------------------------------------------------------------------------
+
+name: loan-copilot-grounded-w2
+description: >
+  Grounded Loan Copilot: Intake → Eligibility (RAG) → KYC → Consent Gate →
+  CreditHistory (UBKI) → Risk → Underwriter. Усі зовнішні виклики — через
+  LLM Gateway, усі reads з PII — за Consent Gate.
+mode: Sequential
+
+# ----------------------------------------------------------------------------
+# ASSISTANTS — reference на вже створених у CodeMie UI
+# ----------------------------------------------------------------------------
+assistants:
+  - id: intake
+    assistant_id: intake-agent          # з W1
+  - id: eligibility
+    assistant_id: eligibility-agent     # НОВИЙ у W2
+  - id: kyc
+    assistant_id: kycagent              # з W1 (тепер з real tool)
+  - id: credit
+    assistant_id: credithistoryagent    # з W1 (тепер з real tool)
+  - id: risk
+    assistant_id: risk-agent            # НОВИЙ у W2
+  - id: underwriter
+    assistant_id: underwriter           # з W1
+
+# ----------------------------------------------------------------------------
+# STATES
+# ----------------------------------------------------------------------------
+states:
+
+  # ──────────── 1. INTAKE (same as W1) ────────────
+  - id: intake-state
+    assistant_id: intake
+    task: |
+      Збери структуровану заявку з повідомлення клієнта (8 полів).
+      Поверни JSON за output_schema.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "full_name":       {"type": "string"},
+          "tax_id":          {"type": "string"},
+          "phone":           {"type": "string"},
+          "email":           {"type": "string"},
+          "monthly_income":  {"type": "number"},
+          "amount":          {"type": "number"},
+          "term_months":     {"type": "integer"},
+          "purpose":         {"type": "string"},
+          "intake_complete": {"type": "boolean"},
+          "missing_fields":  {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["intake_complete"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "intake_complete == True"
+        then: eligibility-state
+        otherwise: end
+
+  # ──────────── 2. ELIGIBILITY (RAG) — НОВЕ У W2 ────────────
+  - id: eligibility-state
+    assistant_id: eligibility
+    task: |
+      Клієнт: {{full_name}}, purpose={{purpose}}, amount={{amount}} UAH,
+      term={{term_months}} міс, income={{monthly_income}} UAH.
+
+      Перевір eligibility проти POL-LOAN-01 (критерії ФОП, вік, громадянство)
+      та SOP-CREDIT-02 (ліміти суми/строку). ОБОВ'ЯЗКОВО цитуй конкретний
+      пункт регламенту у форматі [POL-LOAN-01 §4.2.1].
+
+      Якщо факту немає у документах — refusal, НЕ ВИГАДУВАТИ політику.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "eligible":  {"type": "boolean"},
+          "citations": {"type": "array", "items": {"type": "string"}},
+          "reason":    {"type": "string"},
+          "escalate_to_human": {"type": "boolean"}
+        },
+        "required": ["eligible", "citations", "reason"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "eligible == True and escalate_to_human == False"
+        then: kyc-state
+        otherwise: end
+
+  # ──────────── 3. KYC (real tool) ────────────
+  - id: kyc-state
+    assistant_id: kyc
+    task: |
+      Виклич kyc.lookup({tax_id: "{{tax_id}}"}) та поверни результат.
+      Якщо kyc_passed=false — зупиняємо процес.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "kyc_passed": {"type": "boolean"},
+          "sanctions":  {"type": "boolean"},
+          "pep":        {"type": "boolean"},
+          "reason":     {"type": "string"}
+        },
+        "required": ["kyc_passed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "kyc_passed == True"
+        then: consent-gate
+        otherwise: end
+
+  # ──────────── 4. CONSENT GATE (HITL interrupt) — НОВЕ У W2 ────────────
+  - id: consent-gate
+    assistant_id: intake
+    task: |
+      Запит у клієнта: "Для розрахунку персональної пропозиції мені потрібна
+      ваша згода на запит кредитної історії в УБКІ. Згода зберігається у
+      нашій системі (ЗУ про захист персональних даних, Ст. 7). Згодні?"
+
+      Чекай явного "так" з consent_id (генерується в UI/бекенді).
+      БЕЗ consent_id — НЕ пропускай далі.
+    interrupt_before: true  # HITL pause до recorded consent_id
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "consent_id":    {"type": "string"},
+          "consent_given": {"type": "boolean"}
+        },
+        "required": ["consent_given"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "consent_given == True and len(consent_id) > 0"
+        then: credit-history-state
+        otherwise: end
+
+  # ──────────── 5. CREDIT HISTORY (real UBKI tool) ────────────
+  - id: credit-history-state
+    assistant_id: credit
+    task: |
+      Виклич credit_history.pull({
+        tax_id: "{{tax_id}}",
+        consent_id: "{{consent_id}}"
+      }) та поверни скор УБКІ (300–850).
+
+      Якщо tool поверне CONSENT_REQUIRED error — ЗУПИНКА (архітектурна
+      помилка — ми тут не маємо бути без consent).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "credit_score": {"type": "integer"},
+          "arrears":      {"type": "array", "items": {"type": "string"}},
+          "bureau_status":{"type": "string"}
+        },
+        "required": ["credit_score"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "credit_score >= 500"
+        then: risk-state
+        otherwise: end
+
+  # ──────────── 6. RISK SCORE (internal tool · write + audit) — НОВЕ У W2 ────
+  - id: risk-state
+    assistant_id: risk
+    task: |
+      Виклич risk.score({
+        tax_id: "{{tax_id}}",
+        bureau_score: {{credit_score}},
+        monthly_income: {{monthly_income}},
+        amount: {{amount}},
+        term_months: {{term_months}}
+      }) → отримаєш risk_band (A/B/C/D) та PTI.
+
+      Side-effect: internal write в risk_registry. Audit log автоматичний.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "risk_band": {"type": "string", "enum": ["A", "B", "C", "D"]},
+          "pti":       {"type": "number"},
+          "rate_apr":  {"type": "number"}
+        },
+        "required": ["risk_band", "pti"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "risk_band != 'D'"
+        then: underwriter-state
+        otherwise: end
+
+  # ──────────── 7. UNDERWRITER (final decision, as W1) ────────────
+  - id: underwriter-state
+    assistant_id: underwriter
+    task: |
+      Фінальне рішення на основі всіх даних:
+        amount={{amount}}, term_months={{term_months}},
+        monthly_income={{monthly_income}}, risk_band={{risk_band}},
+        pti={{pti}}, suggested_apr={{rate_apr}}.
+
+      Поверни decision + reason + citation на SOP-CREDIT-02 (policy matrix).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "decision":  {"type": "string", "enum": ["approve", "decline", "manual_review"]},
+          "rate_apr":  {"type": ["number", "null"]},
+          "reason":    {"type": "string"},
+          "citations": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: end
+      store_in_context: true
+
+# ----------------------------------------------------------------------------
+# WORKFLOW SETTINGS
+# ----------------------------------------------------------------------------
+recursion_limit: 50
+max_concurrency: 1           # послідовно (NBU audit, dual-control на consent)
+enable_summarization_node: false
+
+# ----------------------------------------------------------------------------
+# NOTES
+# ----------------------------------------------------------------------------
+# 1. `interrupt_before: true` на consent-gate — коректний HITL pattern у
+#    CodeMie 2.59+ (замінив deprecated `wait_for_user_confirmation`).
+#    Workflow паузиться у UI до того, як операційник внесе consent_id.
+#
+# 2. Для production — свопнути `kyc.lookup` / `credit_history.pull` /
+#    `risk.score` tool_id на реальні MCP server endpoints або HTTP
+#    integration. Mock responses — у tool_contracts.yaml.alt.
+#
+# 3. Datasource `loan-policies-ds` на кроці 2 (eligibility-state) має бути
+#    pre-indexed з контентом module_2_grounding/data/policies/. У CodeMie
+#    UI: Datasources → + Create → Markdown collection → upload 3 файли.
+#
+# 4. LLM Gateway (DIAL / Azure OpenAI EU) конфігурується на assistant level —
+#    див. gateway_config.yaml.alt. Жоден call не йде напряму у OpenAI.
+# ----------------------------------------------------------------------------
