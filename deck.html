@@ -516,11 +516,13 @@ html, body {
   position:absolute; inset:0; width:100%; height:100%;
   pointer-events:none; z-index:1; overflow:visible;
 }
-.wire { fill:none; stroke:var(--border-secondary); stroke-width:1.75; opacity:0.75; }
-.wire-hitl       { stroke:var(--box-sp);  stroke-dasharray:5 4; opacity:0.9; }
-.wire-gate       { stroke:var(--box-gate);stroke-dasharray:5 4; opacity:0.9; }
-.wire-evaluator  { stroke:var(--box-out); opacity:0.95; }
-.wire-turn       { stroke:var(--accent);  opacity:0.9; }
+.wire { fill:none; stroke:var(--text-tertiary); stroke-width:2; opacity:0.9; }
+.wire-assistant  { stroke:var(--text-tertiary); opacity:0.9; }
+.wire-tool       { stroke:var(--text-tertiary); opacity:0.9; }
+.wire-hitl       { stroke:var(--box-sp);  stroke-dasharray:5 4; opacity:0.95; }
+.wire-gate       { stroke:var(--box-gate);stroke-dasharray:5 4; opacity:0.95; }
+.wire-evaluator  { stroke:var(--box-out); opacity:1; }
+.wire-turn       { stroke:var(--accent);  opacity:0.95; }
 
 .flow-grid {
   position:relative; z-index:2;
@@ -618,6 +620,91 @@ html, body {
   content:''; position:absolute; right:0.5em; bottom:0.4em;
   width:4px; height:4px; border-radius:50%;
   background:var(--k, var(--box-std)); opacity:0.4;
+}
+
+/* ============ Accordion arch cards (slides 6, 13, 21) ============ */
+.arch-stack { flex:1; display:flex; flex-direction:column; gap:0.4em; min-height:0; overflow-y:auto; }
+.scenario-grid {
+  flex:1; display:grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap:0.8em; min-height:0;
+}
+.scenario-grid > .card { align-self:start; }
+.vec-grid {
+  flex:1; display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:0.8em; min-height:0;
+}
+.vec-grid > .arch-card { align-self:start; max-height:100%; overflow-y:auto; }
+.arch-grid-2col {
+  flex:1; display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:0.4em 1em; min-height:0;
+  align-content:start;
+}
+.arch-grid-2col > .arch-card { align-self:start; }
+.arch-card {
+  background:var(--bg-card);
+  border:1px solid var(--border-primary);
+  border-left:3px solid var(--k, var(--box-std));
+  border-radius:var(--radius-lg);
+  overflow:hidden;
+  transition:background 0.25s ease;
+}
+.arch-card.c-std  { --k:var(--box-std); }
+.arch-card.c-sp   { --k:var(--box-sp); }
+.arch-card.c-gate { --k:var(--box-gate); }
+.arch-card.c-acc  { --k:var(--accent); }
+.arch-card.c-out  { --k:var(--box-out); }
+.arch-card summary {
+  cursor:pointer;
+  padding:0.8em 1em;
+  display:flex; align-items:center; gap:0.7em;
+  list-style:none;
+  user-select:none;
+}
+.arch-card summary::-webkit-details-marker { display:none; }
+.arch-card summary::marker { content:''; }
+.arch-ico {
+  width:1.3em; height:1.3em; flex-shrink:0;
+  color:var(--k, var(--box-std));
+}
+.arch-tag {
+  font-size:0.78em; font-weight:700; letter-spacing:0.1em;
+  text-transform:uppercase; color:var(--k, var(--box-std));
+  flex-shrink:0; min-width:11em;
+}
+.arch-front {
+  flex:1; font-size:0.92em; color:var(--text-secondary);
+  line-height:1.4;
+}
+.arch-chev {
+  flex-shrink:0; color:var(--text-dim);
+  font-size:1.1em; transition:transform 0.3s ease;
+  margin-left:0.5em;
+}
+.arch-card[open] .arch-chev { transform:rotate(90deg); color:var(--k, var(--accent)); }
+.arch-card[open] {
+  background:linear-gradient(135deg,
+    color-mix(in srgb, var(--k, var(--box-std)) 10%, var(--bg-card)) 0%,
+    var(--bg-secondary) 100%);
+  box-shadow:0 4px 16px rgba(0,0,0,0.4), inset 0 0 0 1px color-mix(in srgb, var(--k, var(--box-std)) 20%, transparent);
+}
+.arch-detail {
+  padding:0 1em 0.9em calc(1em + 1.3em + 0.7em);  /* align з текстом після icon */
+  font-size:0.84em; line-height:1.5;
+  color:var(--text-secondary);
+  animation:archSlideDown 0.3s ease-out;
+}
+.arch-detail p { margin-bottom:0.35em; }
+.arch-detail p:last-child { margin-bottom:0; }
+.arch-detail b { color:var(--text-primary); }
+@keyframes archSlideDown {
+  from { opacity:0; transform:translateY(-4px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.arch-card:hover:not([open]) summary {
+  background:color-mix(in srgb, var(--k, var(--box-std)) 5%, transparent);
 }
 
 /* ============ Generic .card flip (grid of info cards) ============ */
@@ -1153,25 +1240,23 @@ SLIDES.push({ title:"AI ref arch", html:`
   <div class="slide-title">AI enterprise reference architecture</div>
   <div class="slide-subtitle">5 шарів + cross-cutting · де копілот живе у стеку банку · <span style="color:var(--accent)">натисни шар → owner / failure / SLO</span></div>
   <div class="content">
-    <div style="flex:1; display:flex; flex-direction:column; gap:0.5em">
+    <div class="arch-stack">
       ${[
-        {cls:'c-std',  ic:'i-browser',    tag:'1 · CHANNELS',             front:'chat UI · mobile · contact center · messenger — → один вхід у orchestrator', back:'<p><b>Owner:</b> Frontend / Mobile teams.</p><p style="margin-top:0.2em"><b>Failure mode:</b> rate-limit abuse, bot-vs-human, session hijack.</p><p style="margin-top:0.2em"><b>SLO:</b> p95 TTFB &lt; 300ms, 99.9% availability.</p><p style="margin-top:0.2em"><b>Банк:</b> Privat24 web + mobile + bank operator UI → один uniform input у orchestrator (не 3 розгалуження).</p>'},
-        {cls:'c-sp',   ic:'i-git-fork',   tag:'2 · ORCHESTRATION',        front:'Orchestrator + specialists · state store · workflow engine · LLM gateway · tool registry', back:'<p><b>Owner:</b> Platform / AI Engineering (НЕ data science).</p><p style="margin-top:0.2em"><b>Failure mode:</b> workflow crash → in-flight loans stuck; cost spike через runaway agent.</p><p style="margin-top:0.2em"><b>SLO:</b> workflow completion &gt; 99.5% на 24h window, cost per application &lt; $0.50.</p><p style="margin-top:0.2em"><b>Банк:</b> наш Loan Copilot живе ТУТ — LangGraph FSM + 7 specialists.</p>'},
-        {cls:'c-acc',  ic:'i-database',   tag:'3 · GROUNDING',            front:'RAG · GraphRAG · Semantic Layer · Direct tools · Wiki-KB · Long-context — обираємо за формою даних', back:'<p><b>Owner:</b> Data / Knowledge team.</p><p style="margin-top:0.2em"><b>Failure mode:</b> stale index (регламент оновили, bot цитує старий); hallucination від низької recall.</p><p style="margin-top:0.2em"><b>SLO:</b> RAGAS faithfulness &gt; 0.85; context recall &gt; 0.9 на golden set; re-index SLA &lt; 24h.</p><p style="margin-top:0.2em"><b>Банк:</b> Hybrid RAG для регламентів + Semantic Layer для балансів.</p>'},
-        {cls:'c-gate', ic:'i-wrench',     tag:'4 · DATA & TOOLS',         front:'core banking · KYC/AML · credit bureau · OCR · CRM · e-sign — все з tool-контрактами', back:'<p><b>Owner:</b> Integration / Backend teams (власники систем).</p><p style="margin-top:0.2em"><b>Failure mode:</b> external vendor 503 (БКІ, Дія.Підпис); schema drift між bank system та tool-contract.</p><p style="margin-top:0.2em"><b>SLO:</b> tool success rate &gt; 99.5%, timeout + dead-letter policy mandatory.</p><p style="margin-top:0.2em"><b>Банк:</b> ніколи raw SQL до core banking → завжди tool-contract з schema + RBAC.</p>'},
-        {cls:'c-out',  ic:'i-chart',      tag:'5 · OBSERVABILITY & OPS',  front:'Langfuse · OTel GenAI semconv · Prometheus · audit log 7 років · incident playbook', back:'<p><b>Owner:</b> SRE / Platform.</p><p style="margin-top:0.2em"><b>Failure mode:</b> silent degradation (quality drop без alert); cost spike unnoticed; audit log втрачений → NBU штраф.</p><p style="margin-top:0.2em"><b>SLO:</b> trace coverage 100%, alert MTTD &lt; 5 хв, audit retention 7 років (compliance).</p><p style="margin-top:0.2em"><b>Банк:</b> OTel GenAI semconv — стандартні span attributes для LLM calls; Langfuse для prompt/output review.</p>'},
+        {cls:'c-std',  ic:'i-browser',    tag:'1 · CHANNELS',             front:'chat UI · mobile · contact center · messenger — → один вхід у orchestrator', back:'<p><b>Owner:</b> Frontend / Mobile teams.</p><p><b>Failure mode:</b> rate-limit abuse, bot-vs-human, session hijack.</p><p><b>SLO:</b> p95 TTFB &lt; 300ms, 99.9% availability.</p><p><b>Банк:</b> Privat24 web + mobile + bank operator UI → один uniform input у orchestrator (не 3 розгалуження).</p>'},
+        {cls:'c-sp',   ic:'i-git-fork',   tag:'2 · ORCHESTRATION',        front:'Orchestrator + specialists · state store · workflow engine · LLM gateway · tool registry', back:'<p><b>Owner:</b> Platform / AI Engineering (НЕ data science).</p><p><b>Failure mode:</b> workflow crash → in-flight loans stuck; cost spike через runaway agent.</p><p><b>SLO:</b> workflow completion &gt; 99.5% на 24h window, cost per application &lt; $0.50.</p><p><b>Банк:</b> наш Loan Copilot живе ТУТ — LangGraph FSM + 7 specialists.</p>'},
+        {cls:'c-acc',  ic:'i-database',   tag:'3 · GROUNDING',            front:'RAG · GraphRAG · Semantic Layer · Direct tools · Wiki-KB · Long-context — обираємо за формою даних', back:'<p><b>Owner:</b> Data / Knowledge team.</p><p><b>Failure mode:</b> stale index (регламент оновили, bot цитує старий); hallucination від низької recall.</p><p><b>SLO:</b> RAGAS faithfulness &gt; 0.85; context recall &gt; 0.9 на golden set; re-index SLA &lt; 24h.</p><p><b>Банк:</b> Hybrid RAG для регламентів + Semantic Layer для балансів.</p>'},
+        {cls:'c-gate', ic:'i-wrench',     tag:'4 · DATA & TOOLS',         front:'core banking · KYC/AML · credit bureau · OCR · CRM · e-sign — все з tool-контрактами', back:'<p><b>Owner:</b> Integration / Backend teams (власники систем).</p><p><b>Failure mode:</b> external vendor 503 (БКІ, Дія.Підпис); schema drift між bank system та tool-contract.</p><p><b>SLO:</b> tool success rate &gt; 99.5%, timeout + dead-letter policy mandatory.</p><p><b>Банк:</b> ніколи raw SQL до core banking → завжди tool-contract з schema + RBAC.</p>'},
+        {cls:'c-out',  ic:'i-chart',      tag:'5 · OBSERVABILITY & OPS',  front:'Langfuse · OTel GenAI semconv · Prometheus · audit log 7 років · incident playbook', back:'<p><b>Owner:</b> SRE / Platform.</p><p><b>Failure mode:</b> silent degradation (quality drop без alert); cost spike unnoticed; audit log втрачений → NBU штраф.</p><p><b>SLO:</b> trace coverage 100%, alert MTTD &lt; 5 хв, audit retention 7 років (compliance).</p><p><b>Банк:</b> OTel GenAI semconv — стандартні span attributes для LLM calls; Langfuse для prompt/output review.</p>'},
       ].map(c => `
-        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}" style="flex:1; min-height:0">
-          <div class="flip-card-inner"><div class="flip-card-face flip-card-front">
-            <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
-            <div class="card-body">${c.front}</div>
-          </div>
-          <div class="flip-card-face flip-card-back" style="padding:0.55em 0.9em">
-            <div class="card-tag" style="margin-bottom:0.2em">${c.tag}</div>
-            <div class="card-body" style="font-size:0.72em; line-height:1.3">${c.back}</div>
-            <div class="fc-back-hint" style="padding-top:0.1em">← back</div>
-          </div></div>
-        </div>
+        <details class="arch-card ${c.cls}">
+          <summary>
+            <svg class="arch-ico"><use href="#${c.ic}"/></svg>
+            <span class="arch-tag">${c.tag}</span>
+            <span class="arch-front">${c.front}</span>
+            <span class="arch-chev">▸</span>
+          </summary>
+          <div class="arch-detail">${c.back}</div>
+        </details>
       `).join('')}
     </div>
     <div class="strip lilac"><b>Cross-cutting:</b> IAM/SSO · RBAC · PII masking на gateway · secrets · cost attribution · EU AI Act · банківська таємниця (Ст. 60)</div>
@@ -1719,30 +1804,26 @@ SLIDES.push({ title:"W1 Theory", html:`
   <div class="slide-title">Agents, decomposition, A2A · <span class="accent">8 концептів</span></div>
   <div class="slide-subtitle">8 концептів, які архітектор має вміти захистити · без прив'язки до домену · <span style="color:var(--accent)">натисни → приклад + anti-pattern</span></div>
   <div class="content">
-    <div class="concept-grid" style="flex:1">
+    <div class="arch-grid-2col">
       ${[
-        {cls:'c-std',  ic:'i-bot',          tag:'АГЕНТ',                      front:'LLM + loop + tools + memory. Не "виклик" — цикл до termination condition.', back:'<p><b>Use when:</b> multi-step task з branching (6+ states).</p><p style="margin-top:0.25em"><b>Avoid:</b> one-shot Q&A — direct LLM call дешевше у 3-10×.</p><p style="margin-top:0.25em"><b>Банк:</b> credit_history specialist loops: consent → BKI pull → score parse → return.</p>'},
-        {cls:'c-std',  ic:'i-workflow',     tag:'AGENT LOOP',                 front:'Reason → Act (tool) → Observe → Reason … до final або max_steps. <b>Детермінований halt</b> обов\'язковий.', back:'<p><b>Halt:</b> max_steps=8 для underwriter, не 50; detect "same tool, same args двічі" → kill.</p><p style="margin-top:0.25em"><b>Anti-pattern:</b> без halt → infinite loop → $$$ bill. Chevrolet Tahoe-за-$1 почалося з loop без guardrail.</p><p style="margin-top:0.25em"><b>Банк:</b> loop_count у кожному trace, alert &gt; 5.</p>'},
-        {cls:'c-sp',   ic:'i-users',        tag:'ДЕКОМПОЗИЦІЯ по РОЛЯХ',       front:'1 агент = 1 роль (eligibility, risk, docs). <b>НЕ</b> по задачах — тоді вибухне в 50 агентів.', back:'<p><b>По ролях:</b> KYC, risk, docs → 3-7 agents total, кожен з власним prompt+eval+owner.</p><p style="margin-top:0.25em"><b>По задачах (anti):</b> kyc_sanctions, kyc_pep, kyc_watchlist... → 50 агентів, orchestrator захлинеться.</p><p style="margin-top:0.25em"><b>Банк:</b> наш Loan Copilot — 7 ролей, не 7×N задач.</p>'},
-        {cls:'c-sp',   ic:'i-git-fork',     tag:'ORCHESTRATOR vs SPECIALISTS', front:'Orchestrator — власник state + routes. Specialist — одна справа добре. Жодного S→S без orchestrator.', back:'<p><b>Orchestrator:</b> state machine (детермінований router), НЕ LLM — зберігає correlation_id, hop history.</p><p style="margin-top:0.25em"><b>Specialist:</b> бачить лише свій scope + свої tools, не знає про інших.</p><p style="margin-top:0.25em"><b>Банк:</b> Loan supervisor = LangGraph FSM; 7 specialists підпорядковані, S→S прямо = заборонено.</p>'},
-        {cls:'c-gate', ic:'i-share',        tag:'A2A MESSAGE',                 front:'<code style="color:var(--accent);font-family:var(--font-mono);font-size:0.9em">{from, to, intent, correlation_id, payload, requires_reply}</code>. Схема — контракт.', back:'<p><b>Контракт включає:</b> schema_version, timeout, retry_policy, idempotency_key.</p><p style="margin-top:0.25em"><b>Чому НЕ shared memory:</b> легше debug (replay з логу), легше eval (deterministic replay).</p><p style="margin-top:0.25em"><b>Банк:</b> correlation_id = loan_id → трасування через всі agents + audit for НБУ.</p>'},
-        {cls:'c-gate', ic:'i-dollar',       tag:'COORDINATION COST',           front:'Кожен hop = +latency + контекст-дублювання + risk mis-routing. Зміряйте, перш ніж додавати агента.', back:'<p><b>Rule-of-thumb:</b> +1 hop = +500ms + 2× tokens + ~10% mis-route probability.</p><p style="margin-top:0.25em"><b>Метрика:</b> accuracy_delta vs cost_delta проти monolith baseline. Якщо split не дає accuracy wins → не роби.</p><p style="margin-top:0.25em"><b>Банк:</b> щомісячний retrospection — чи виправданий кожен specialist.</p>'},
-        {cls:'c-out',  ic:'i-scale',        tag:'КОЛИ ДІЛИТИ',                 front:'Окремі data access · eval criteria · SLO · власники. Ні одне — тримай моноліт.', back:'<p><b>4 критерії:</b> різний data scope · різний eval set · різний SLO · різний owner.</p><p style="margin-top:0.25em"><b>Правило:</b> 2+ критерії "так" → split; 0-1 → моноліт.</p><p style="margin-top:0.25em"><b>Банк:</b> credit_history має власний SLO (5s, BKI), свій eval set (300 cases) → окремий specialist.</p>'},
-        {cls:'c-out',  ic:'i-shield-check', tag:'GUARDRAIL vs POLICY',         front:'Guardrail — runtime відмова всередині loop\'у. Policy — те, що кодифіковане у документі банку. РІЗНЕ.', back:'<p><b>Guardrail:</b> runtime код (regex, LLM-judge, deterministic). Blocks у реальному часі.</p><p style="margin-top:0.25em"><b>Policy:</b> PDF у legal department. Повільно оновлюється, не виконується автоматично.</p><p style="margin-top:0.25em"><b>Банк:</b> "ставка &gt; 25% річних" — guardrail (блок); "максимальна ефективна ставка" — Policy у НБУ Постанові 54.</p>'},
+        {cls:'c-std',  ic:'i-bot',          tag:'АГЕНТ',                      front:'LLM + loop + tools + memory. Не "виклик" — цикл до termination condition.', back:'<p><b>Use when:</b> multi-step task з branching (6+ states).</p><p><b>Avoid:</b> one-shot Q&A — direct LLM call дешевше у 3-10×.</p><p><b>Банк:</b> credit_history specialist loops: consent → BKI pull → score parse → return.</p>'},
+        {cls:'c-std',  ic:'i-workflow',     tag:'AGENT LOOP',                 front:'Reason → Act → Observe … до final або max_steps.', back:'<p><b>Halt:</b> max_steps=8 для underwriter, не 50; detect "same tool, same args двічі" → kill.</p><p><b>Anti-pattern:</b> без halt → infinite loop → $$$ bill. Chevrolet Tahoe-за-$1 почалося з loop без guardrail.</p><p><b>Банк:</b> loop_count у кожному trace, alert &gt; 5.</p>'},
+        {cls:'c-sp',   ic:'i-users',        tag:'ДЕКОМПОЗИЦІЯ по РОЛЯХ',       front:'1 агент = 1 роль (eligibility, risk, docs). НЕ по задачах — вибухне в 50 агентів.', back:'<p><b>По ролях:</b> KYC, risk, docs → 3-7 agents total, кожен з власним prompt+eval+owner.</p><p><b>По задачах (anti):</b> kyc_sanctions, kyc_pep, kyc_watchlist... → 50 агентів, orchestrator захлинеться.</p><p><b>Банк:</b> наш Loan Copilot — 7 ролей, не 7×N задач.</p>'},
+        {cls:'c-sp',   ic:'i-git-fork',     tag:'ORCHESTRATOR vs SPECIALISTS', front:'Orchestrator — власник state + routes. Specialist — одна справа добре. Жодного S→S.', back:'<p><b>Orchestrator:</b> state machine (детермінований router), НЕ LLM — зберігає correlation_id, hop history.</p><p><b>Specialist:</b> бачить лише свій scope + свої tools, не знає про інших.</p><p><b>Банк:</b> Loan supervisor = LangGraph FSM; 7 specialists підпорядковані, S→S прямо = заборонено.</p>'},
+        {cls:'c-gate', ic:'i-share',        tag:'A2A MESSAGE',                 front:'<code style="color:var(--accent);font-family:var(--font-mono);font-size:0.88em">{from, to, intent, correlation_id, payload}</code>. Схема — контракт.', back:'<p><b>Контракт включає:</b> schema_version, timeout, retry_policy, idempotency_key.</p><p><b>Чому НЕ shared memory:</b> легше debug (replay з логу), легше eval (deterministic replay).</p><p><b>Банк:</b> correlation_id = loan_id → трасування через всі agents + audit для НБУ.</p>'},
+        {cls:'c-gate', ic:'i-dollar',       tag:'COORDINATION COST',           front:'Кожен hop = +latency + контекст-дублювання + risk mis-routing. Зміряйте, перш ніж додавати агента.', back:'<p><b>Rule-of-thumb:</b> +1 hop = +500ms + 2× tokens + ~10% mis-route probability.</p><p><b>Метрика:</b> accuracy_delta vs cost_delta проти monolith baseline. Якщо split не дає accuracy wins → не роби.</p><p><b>Банк:</b> щомісячний retrospection — чи виправданий кожен specialist.</p>'},
+        {cls:'c-out',  ic:'i-scale',        tag:'КОЛИ ДІЛИТИ',                 front:'Окремі data access · eval criteria · SLO · власники. Ні одне — тримай моноліт.', back:'<p><b>4 критерії:</b> різний data scope · різний eval set · різний SLO · різний owner.</p><p><b>Правило:</b> 2+ критерії "так" → split; 0-1 → моноліт.</p><p><b>Банк:</b> credit_history має власний SLO (5s, BKI), свій eval set (300 cases) → окремий specialist.</p>'},
+        {cls:'c-out',  ic:'i-shield-check', tag:'GUARDRAIL vs POLICY',         front:'Guardrail — runtime відмова всередині loop\'у. Policy — у документі банку. РІЗНЕ.', back:'<p><b>Guardrail:</b> runtime код (regex, LLM-judge, deterministic). Blocks у реальному часі.</p><p><b>Policy:</b> PDF у legal department. Повільно оновлюється, не виконується автоматично.</p><p><b>Банк:</b> "ставка &gt; 25% річних" — guardrail (блок); "максимальна ефективна ставка" — Policy у НБУ Постанові 54.</p>'},
       ].map(c => `
-        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
-          <div class="flip-card-inner">
-            <div class="flip-card-face flip-card-front">
-              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
-              <div class="card-body">${c.front}</div>
-            </div>
-            <div class="flip-card-face flip-card-back">
-              <div class="card-tag">${c.tag}</div>
-              <div class="card-body" style="font-size:0.86em; line-height:1.5">${c.back}</div>
-              <div class="fc-back-hint">← back</div>
-            </div>
-          </div>
-        </div>
+        <details class="arch-card ${c.cls}">
+          <summary>
+            <svg class="arch-ico"><use href="#${c.ic}"/></svg>
+            <span class="arch-tag">${c.tag}</span>
+            <span class="arch-front">${c.front}</span>
+            <span class="arch-chev">▸</span>
+          </summary>
+          <div class="arch-detail" style="font-size:0.82em; line-height:1.45">${c.back}</div>
+        </details>
       `).join('')}
     </div>
     <div class="strip"><b>ТЕСТ:</b> якщо не можете в 1 реченні пояснити кожен концепт своєму CTO — ви його не знаєте.</div>
@@ -1771,10 +1852,10 @@ SLIDES.push({
   html: `
     <div class="slide">
       <div class="slide-title">Scenario · <span class="accent">consumer loan copilot</span></div>
-      <div class="slide-subtitle">Chat-first journey · intake → KYC → credit history → decision → contract → e-sign · має пройти аудит НБУ та вижити ніч</div>
+      <div class="slide-subtitle">Chat-first journey · intake → KYC → credit history → decision → contract → e-sign · має пройти аудит НБУ · <span style="color:var(--accent)">натисни роль → tools / data / SLO</span></div>
       <div class="content">
-        <div class="grid-2" style="flex:1">
-          <div class="card c-std">
+        <div class="scenario-grid">
+          <div class="card c-std" style="margin-bottom:0">
             <div class="card-tag">BUSINESS CONTEXT</div>
             <div class="card-body">
               <p>Український retail-банк рівня PrivatBank · <b>~5M споживчих заявок/рік</b> через Privat24 (підмножина 36M+ усіх онлайн-заявок)</p>
@@ -1784,21 +1865,27 @@ SLIDES.push({
               <p><b>Цільовий KPI після запуску copilot:</b> 2–5 хв first-decision · abandonment &lt; 20% · <b>cost/case &lt; $1.50</b></p>
             </div>
           </div>
-          <div class="card c-sp">
-            <div class="card-tag">AGENT TOPOLOGY (7 РОЛЕЙ З 02-ROLES)</div>
-            <div class="card-body">
-              <p><b>1 Orchestrator</b> — тримає state та deterministic/LLM routes</p>
-              <p><b>7 Specialists:</b></p>
-              <p style="padding-left:1em; line-height:1.65; font-size:0.92em">
-                · <b>Intake</b> — збір заявки та валідація 8 полів<br>
-                · <b>KYC</b> — sanctions screening, PEP check<br>
-                · <b>CreditHistory</b> — pull скору 300–850 та історії<br>
-                · <b>Underwriter</b> — 4-tier політика, PTI, risk band<br>
-                · <b>Pricing</b> — розрахунок ставки та графіка за tier<br>
-                · <b>Contract</b> — генерація договору з шаблону<br>
-                · <b>Compliance</b> — фінальний sign-off перед e-sign
-              </p>
-            </div>
+          <div class="arch-stack" style="min-height:0">
+            ${[
+              {cls:'c-sp',   ic:'i-git-fork',   tag:'ORCHESTRATOR',  front:'тримає state + deterministic/LLM routes', back:'<p><b>Scope:</b> власник FSM state, correlation_id, hop history. Routing — LLM або deterministic switch (preferred у банку).</p><p><b>Tools:</b> ЖОДНИХ. Orchestrator лише делегує до specialists.</p><p><b>Owner:</b> Platform / AI Engineering.</p><p><b>SLO:</b> workflow completion &gt; 99.5% на 24h window.</p>'},
+              {cls:'c-std',  ic:'i-bot',        tag:'INTAKE',        front:'збір заявки та валідація 8 полів', back:'<p><b>Scope:</b> діалог з клієнтом у Privat24, збирає 8 полів (сума, строк, дохід, ІПН, phone, email, purpose, extra).</p><p><b>Tools:</b> none (LLM + schema validator).</p><p><b>Data:</b> PII masked у Langfuse traces.</p><p><b>SLO:</b> p95 &lt; 2s TTFT, schema conformance 100%.</p>'},
+              {cls:'c-std',  ic:'i-shield-check', tag:'KYC',         front:'sanctions screening, PEP check', back:'<p><b>Tool:</b> <code>kyc.lookup</code> → РНБО, OFAC, UN, WorldCheck + внутрішній PEP registry.</p><p><b>Consent:</b> не потрібна (law requirement).</p><p><b>SLO:</b> p95 &lt; 3s, 99.5% success.</p><p><b>Hook:</b> sanctions=true → immediate end (hard stop ПЕРЕД UBKI, економія $1.50).</p>'},
+              {cls:'c-std',  ic:'i-chart',      tag:'CREDIT HISTORY',front:'pull скору 300–850 + історії', back:'<p><b>Tool:</b> <code>credit_history.pull</code> → UBKI, ~$1.50/call (UAH 50-80).</p><p><b>Consent Gate ОБОВ\'ЯЗКОВИЙ</b> (ЗУ Ст. 7). Без consent_id → tool error.</p><p><b>SLO:</b> p95 &lt; 5s з retry (3×, backoff 2/4/8s), 99.5% success.</p><p><b>Audit:</b> 7-year retention (NBU).</p>'},
+              {cls:'c-std',  ic:'i-scale',      tag:'UNDERWRITER',   front:'4-tier політика, PTI, risk band', back:'<p><b>Policy ref:</b> SOP-CREDIT-02 §5 (4-tier policy matrix).</p><p><b>Computations:</b> PMT (ануїтет), PTI = payment/income, risk_band A/B/C/D.</p><p><b>Tool:</b> <code>risk.score</code> (Python/DuckDB, НЕ LLM — deterministic math).</p><p><b>Hook:</b> band=D → decline; band=C (grey, 550-650) → committee_review HITL.</p>'},
+              {cls:'c-std',  ic:'i-dollar',     tag:'PRICING',       front:'ставка та графік за tier', back:'<p><b>Rate matrix:</b> A → 18.5%, B → 22%, C → 26.5%, D → N/A.</p><p><b>Output:</b> amortization schedule (месячні платежі) + total cost.</p><p><b>Tool:</b> <code>pricing.compute</code> (deterministic Python).</p><p><b>SLO:</b> p95 &lt; 1s. Audit log кожного pricing event (NBU).</p>'},
+              {cls:'c-std',  ic:'i-file-text',  tag:'CONTRACT',      front:'генерація договору з шаблону', back:'<p><b>Mechanism:</b> Jinja template renderer (НЕ LLM) — detермінований substitution.</p><p><b>Tool:</b> <code>contract.draft</code> → генерує договір + <b>резервує limit</b> у картковому бекенді.</p><p><b>Idempotent:</b> same inputs → same contract_id (SHA256).</p><p><b>Hook:</b> наступний крок — verify_before_send pre-write gate.</p>'},
+              {cls:'c-std',  ic:'i-shield-check', tag:'COMPLIANCE',  front:'фінальний sign-off перед e-sign', back:'<p><b>Pre-write evaluator gate.</b> Deterministic match checks: rate_contract == rate_underwriter, amount == intake, borrower == tax_id.</p><p><b>Tolerance:</b> 0 (binary gate).</p><p><b>Hook on fail:</b> compensation-state Saga (limit.release + contract.cancel).</p><p><b>Owner:</b> Risk / Compliance team.</p>'},
+            ].map(c => `
+              <details class="arch-card ${c.cls}">
+                <summary>
+                  <svg class="arch-ico"><use href="#${c.ic}"/></svg>
+                  <span class="arch-tag">${c.tag}</span>
+                  <span class="arch-front">${c.front}</span>
+                  <span class="arch-chev">▸</span>
+                </summary>
+                <div class="arch-detail">${c.back}</div>
+              </details>
+            `).join('')}
           </div>
         </div>
         <div class="grid-3">
@@ -2285,28 +2372,27 @@ SLIDES.push({ title:"Advanced RAG", html:`
   <div class="slide-title">Advanced RAG · <span class="accent">indexing & retrieval ladder</span></div>
   <div class="slide-subtitle">Загальні техніки · кожна сходинка додає cost + latency, але повертає relevance · <span style="color:var(--accent)">натисни → cost / win / коли</span></div>
   <div class="content">
-    <div class="grid-2" style="flex:1">
+    <div class="arch-grid-2col">
       ${[
-        {cls:'c-std',  ic:'i-git-fork',   tag:'1 · HYBRID RETRIEVAL',       front:'<p><b>BM25 + dense паралельно → RRF merge.</b> Змішаний інтент: точні терміни, ІПН, номери постанов НБУ + семантичний парафраз.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">Elasticsearch · Qdrant · Weaviate · Reciprocal Rank Fusion</p>', back:'<p><b>Cost:</b> 2× queries (BM25 + dense), ~50–100ms latency.</p><p style="margin-top:0.25em"><b>Win:</b> ~+30% recall на запитах з точними кодами («Постанова НБУ №351»).</p><p style="margin-top:0.25em"><b>Deploy order:</b> ПЕРШОЮ. Найдешевший win у ladder. Без цього #4 rerank marnie тратиш $.</p>'},
-        {cls:'c-sp',   ic:'i-file-text',  tag:'2 · CONTEXTUAL RETRIEVAL',   front:'<p><b>LLM препендить doc-level контекст до кожного чанка.</b> Чанки не втрачають сенс без назви розділу/суб\'єкта (скорочує пропуски на 40%).</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">Anthropic Contextual Retrieval (2024) · LlamaIndex</p>', back:'<p><b>Cost:</b> LLM call per chunk ПІД ЧАС індексації (one-time ~$0.01/chunk на Haiku).</p><p style="margin-top:0.25em"><b>Win:</b> query-time latency = 0; -40% retrieval miss. З #4 rerank → -49% miss (Anthropic paper).</p><p style="margin-top:0.25em"><b>Deploy order:</b> другою — під час next re-index. Prompt-cached doc для батчу чанків.</p>'},
-        {cls:'c-gate', ic:'i-package',    tag:'3 · COLBERT / LATE INTERACTION', front:'<p><b>Токен-рівневі ембедінги та матричне порівняння (MaxSim).</b> Критично не втратити точні номери статей, постанов чи технічні параметри.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">ColPali · Jina-ColBERT · Stanford ColBERTv2 · Vespa</p>', back:'<p><b>Cost:</b> 5–10× storage (per-token vectors), potreбує спеціалізованої БД (Vespa), складна операційна модель.</p><p style="margin-top:0.25em"><b>Win:</b> exact token-level matching — критично для «Ст. 10, п.3».</p><p style="margin-top:0.25em"><b>Deploy order:</b> ТІЛЬКИ якщо #1+#2+#4 не дають precision на точні коди. Overkill для 90% банк кейсів.</p>'},
-        {cls:'c-std',  ic:'i-chart',      tag:'4 · CROSS-ENCODER RERANK',   front:'<p><b>Retrieve top-K кандидатів, точний re-ranking моделлю до top-N.</b> Precision важливіша за latency; великий початковий candidate pool.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">BGE-reranker · Cohere Rerank · FlashRank</p>', back:'<p><b>Cost:</b> ~$1 на 1000 reranked docs (Cohere); +100–200ms latency.</p><p style="margin-top:0.25em"><b>Win:</b> precision@5 ↑ на 15-25%. Можеш retrieve top-50 → rerank → feed top-5 у prompt.</p><p style="margin-top:0.25em"><b>Deploy order:</b> ДРУГОЮ після #1. Pair with #1+#2 — golden trio покриває 85% enterprise кейсів.</p>'},
-        {cls:'c-sp',   ic:'i-workflow',   tag:'5 · RAPTOR SUMMARY TREES',   front:'<p><b>Рекурсивна кластеризація та сумаризація чанків у дерево.</b> Відповідає на високорівневі концептуальні питання («яка загальна стратегія ризику?»).</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">RAPTOR (ICLR 2024) · LlamaIndex Recursive Retriever</p>', back:'<p><b>Cost:</b> HIGH за індексації — O(N log N) LLM calls для tree summaries. Re-build при 10%+ оновленнях.</p><p style="margin-top:0.25em"><b>Win:</b> «які загальні принципи кредитної політики?» — на chunk-level такі питання провалюються.</p><p style="margin-top:0.25em"><b>Deploy order:</b> ТІЛЬКИ для holistic / high-level Q (CRO queries). Specific lookup — звичайний RAG.</p>'},
-        {cls:'c-out',  ic:'i-share',      tag:'6 · QUERY REWRITE / HYDE',   front:'<p><b>Гіпотетична відповідь (HyDE) або декомпозиція на підзапити.</b> Короткі/неоднозначні запити; ліквідує термінологічний розрив між юзером і SOP.</p><p style="color:var(--text-muted); font-size:0.76em; margin-top:0.2em; font-style:italic">HyDE · Multi-Query · RAG-Fusion · Step-back Prompting</p>', back:'<p><b>Cost:</b> +1 LLM call per user query (query rewrite), +300–500ms latency на критичному path.</p><p style="margin-top:0.25em"><b>Win:</b> ~+20% recall на коротких/розмовних запитах («як оплатити»).</p><p style="margin-top:0.25em"><b>Deploy order:</b> ОСТАННЬОЮ. Спочатку чини retrieval (#1-#4). Rewrite — коли user queries структурно поганенькі.</p>'},
+        {cls:'c-std',  ic:'i-git-fork',   tag:'1 · HYBRID RETRIEVAL',       front:'BM25 + dense паралельно → RRF merge · для точних кодів + семантики', vendors:'Elasticsearch · Qdrant · Weaviate · RRF', back:'<p><b>Cost:</b> 2× queries (BM25 + dense), ~50–100ms latency.</p><p><b>Win:</b> ~+30% recall на запитах з точними кодами («Постанова НБУ №351»).</p><p><b>Deploy order:</b> ПЕРШОЮ. Найдешевший win у ladder. Без цього #4 rerank marnie тратиш $.</p>'},
+        {cls:'c-sp',   ic:'i-file-text',  tag:'2 · CONTEXTUAL RETRIEVAL',   front:'LLM препендить doc-level контекст до кожного чанка (-40% miss)', vendors:'Anthropic Contextual Retrieval (2024) · LlamaIndex', back:'<p><b>Cost:</b> LLM call per chunk ПІД ЧАС індексації (one-time ~$0.01/chunk на Haiku).</p><p><b>Win:</b> query-time latency = 0; -40% retrieval miss. З #4 rerank → -49% miss (Anthropic paper).</p><p><b>Deploy order:</b> другою — під час next re-index. Prompt-cached doc для батчу чанків.</p>'},
+        {cls:'c-gate', ic:'i-package',    tag:'3 · COLBERT / LATE INTERACTION', front:'Токен-рівневі ембедінги + MaxSim · точні номери статей не губляться', vendors:'ColPali · Jina-ColBERT · Stanford ColBERTv2 · Vespa', back:'<p><b>Cost:</b> 5–10× storage (per-token vectors), potreбує спеціалізованої БД (Vespa).</p><p><b>Win:</b> exact token-level matching — критично для «Ст. 10, п.3».</p><p><b>Deploy order:</b> ТІЛЬКИ якщо #1+#2+#4 не дають precision на точні коди. Overkill для 90% банк кейсів.</p>'},
+        {cls:'c-std',  ic:'i-chart',      tag:'4 · CROSS-ENCODER RERANK',   front:'Retrieve top-K → rerank до top-N · precision над latency', vendors:'BGE-reranker · Cohere Rerank · FlashRank', back:'<p><b>Cost:</b> ~$1 на 1000 reranked docs (Cohere); +100–200ms latency.</p><p><b>Win:</b> precision@5 ↑ на 15-25%. Retrieve top-50 → rerank → feed top-5 у prompt.</p><p><b>Deploy order:</b> ДРУГОЮ після #1. Pair with #1+#2 — golden trio покриває 85% enterprise кейсів.</p>'},
+        {cls:'c-sp',   ic:'i-workflow',   tag:'5 · RAPTOR SUMMARY TREES',   front:'Рекурсивна сумаризація чанків у дерево · для holistic запитів', vendors:'RAPTOR (ICLR 2024) · LlamaIndex Recursive Retriever', back:'<p><b>Cost:</b> HIGH за індексації — O(N log N) LLM calls для tree summaries. Re-build при 10%+ оновленнях.</p><p><b>Win:</b> «які загальні принципи кредитної політики?» — на chunk-level такі питання провалюються.</p><p><b>Deploy order:</b> ТІЛЬКИ для holistic / high-level Q (CRO queries). Specific lookup — звичайний RAG.</p>'},
+        {cls:'c-out',  ic:'i-share',      tag:'6 · QUERY REWRITE / HYDE',   front:'HyDE або декомпозиція на підзапити · для коротких/неоднозначних query', vendors:'HyDE · Multi-Query · RAG-Fusion · Step-back Prompting', back:'<p><b>Cost:</b> +1 LLM call per user query, +300–500ms latency на критичному path.</p><p><b>Win:</b> ~+20% recall на коротких/розмовних запитах («як оплатити»).</p><p><b>Deploy order:</b> ОСТАННЬОЮ. Спочатку чини retrieval (#1-#4). Rewrite — коли user queries структурно поганенькі.</p>'},
       ].map(c => `
-        <div class="card ${c.cls} flip-card" tabindex="0" role="button" aria-label="Flip ${c.tag}" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
-          <div class="flip-card-inner">
-            <div class="flip-card-face flip-card-front">
-              <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#${c.ic}"/></svg>${c.tag}</div>
-              <div class="card-body">${c.front}</div>
-            </div>
-            <div class="flip-card-face flip-card-back">
-              <div class="card-tag">${c.tag}</div>
-              <div class="card-body" style="font-size:0.82em; line-height:1.45">${c.back}</div>
-              <div class="fc-back-hint">← back</div>
-            </div>
+        <details class="arch-card ${c.cls}">
+          <summary>
+            <svg class="arch-ico"><use href="#${c.ic}"/></svg>
+            <span class="arch-tag">${c.tag}</span>
+            <span class="arch-front">${c.front}</span>
+            <span class="arch-chev">▸</span>
+          </summary>
+          <div class="arch-detail" style="font-size:0.82em; line-height:1.45">
+            ${c.back}
+            <p style="margin-top:0.4em; color:var(--text-muted); font-size:0.92em; font-style:italic">${c.vendors}</p>
           </div>
-        </div>
+        </details>
       `).join('')}
     </div>
     <div class="strip">
@@ -2331,67 +2417,61 @@ SLIDES.push({ title:"Advanced RAG", html:`
 SLIDES.push({ title:"Vector Storage & DLS", html:`
 <div class="slide">
   <div class="slide-title">Vector storage & DLS · <span class="accent">топологія баз та безпека доступу</span></div>
-  <div class="slide-subtitle">Підводка: один копілот обслуговує різні ролі (клієнт, оператор, андеррайтер) · чому захист даних (DLS) має бути вбудований прямо у векторний індекс · <span style="color:var(--accent)">натисни картку → decision helper</span></div>
+  <div class="slide-subtitle">Підводка: один копілот обслуговує різні ролі (клієнт, оператор, андеррайтер) · чому захист даних (DLS) має бути вбудований прямо у векторний індекс · <span style="color:var(--accent)">натисни секцію → decision helper / test</span></div>
   <div class="content">
-    <div class="split-22">
-      <div class="card c-std flip-card" tabindex="0" role="button" aria-label="Flip storage topology" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
-        <div class="flip-card-inner"><div class="flip-card-face flip-card-front">
-        <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#i-database"/></svg>ТОПОЛОГІЯ СХОВИЩ · ДЕ ЖИВУТЬ ВЕКТОРИ</div>
-        <div class="card-body" style="font-size:0.85em; line-height:1.6">
+    <div class="vec-grid">
+      <details open class="arch-card c-std">
+        <summary>
+          <svg class="arch-ico"><use href="#i-database"/></svg>
+          <span class="arch-tag">ТОПОЛОГІЯ СХОВИЩ</span>
+          <span class="arch-front">pgvector · Qdrant/Milvus · OpenSearch · HNSW O(log N)</span>
+          <span class="arch-chev">▸</span>
+        </summary>
+        <div class="arch-detail" style="font-size:0.84em; line-height:1.55">
           <p><b style="color:var(--accent)">1. pgvector (PostgreSQL) — Дефолт №1 (до 2–5 млн векторів):</b><br>
           Вже сертифікований CISO банку · нуль нових ліцензій у K8s · повні ACID-транзакції разом із даними заявки · стандартні репліки та бекапи DBA.</p>
-          <p style="margin-top:0.45em"><b style="color:var(--box-sp)">2. Dedicated (Qdrant / Milvus) — Екстремальний скейл:</b><br>
-          Потрібні лише для 20–50+ млн векторів (наприклад, векторизація всіх транзакцій за 5 років) або при QPS &gt; 500. Вимагає окремого кластера.</p>
-          <p style="margin-top:0.45em"><b style="color:var(--box-gate)">3. OpenSearch / Elastic — Корпоративна шина:</b><br>
+          <p style="margin-top:0.4em"><b style="color:var(--box-sp)">2. Dedicated (Qdrant / Milvus) — Екстремальний скейл:</b><br>
+          Потрібні лише для 20–50+ млн векторів або при QPS &gt; 500. Вимагає окремого кластера.</p>
+          <p style="margin-top:0.4em"><b style="color:var(--box-gate)">3. OpenSearch / Elastic — Корпоративна шина:</b><br>
           Якщо Elastic вже розгорнутий для логів або каталогу Privat24: надійний гібрид BM25 + k-NN векторний плагін з коробки.</p>
-          <div style="margin-top:0.6em; padding:0.45em 0.6em; background:rgba(30,144,255,0.08); border-left:3px solid var(--accent); font-size:0.92em">
+          <div style="margin-top:0.5em; padding:0.4em 0.6em; background:rgba(0,246,255,0.07); border-left:3px solid var(--accent); font-size:0.95em">
             <b>HNSW-індекс</b> (<i>Hierarchical Navigable Small World</i>): багатошаровий графовий індекс у RAM для надшвидкого пошуку за <b>O(log N)</b> замість перебору мільйона записів.
           </div>
+          <hr style="border:none; border-top:1px dashed var(--border-primary); margin:0.7em 0 0.5em">
+          <p style="font-size:0.82em; font-weight:700; letter-spacing:0.08em; color:var(--accent); text-transform:uppercase; margin-bottom:0.3em">Decision helper · коли що</p>
+          <p><b style="color:var(--accent)">pgvector</b> → &lt; 5M векторів, QPS &lt; 100, bank Postgres в проді. Deploy за 1 день.</p>
+          <p style="margin-top:0.25em"><b style="color:var(--box-sp)">Qdrant / Milvus</b> → &gt; 20M векторів, QPS &gt; 500. Коли p95 search &gt; 100ms на pgvector — міграція.</p>
+          <p style="margin-top:0.25em"><b style="color:var(--box-gate)">OpenSearch</b> → Elastic вже deployed, hybrid BM25+vector з коробки.</p>
+          <p style="margin-top:0.35em"><b>Migration path:</b> pgvector → OpenSearch (if Elastic exists) → Qdrant (if dedicated). Ніколи не починай з Qdrant на PoC.</p>
+          <p style="margin-top:0.25em"><b>Anti-pattern:</b> «візьмемо Pinecone — managed». Для банк. даних перевіряй SOC2 Type II, UA/EU residency, SLA.</p>
         </div>
-        </div>
-        <div class="flip-card-face flip-card-back">
-          <div class="card-tag">DECISION HELPER · КОЛИ ЩО</div>
-          <div class="card-body" style="font-size:0.82em; line-height:1.5">
-            <p><b style="color:var(--accent)">pgvector</b> — &lt; 5M векторів, QPS &lt; 100, bank Postgres вже в проді. Deploy за 1 день, CISO sign-off = 0 нових ліцензій.</p>
-            <p style="margin-top:0.3em"><b style="color:var(--box-sp)">Qdrant / Milvus</b> — &gt; 20M векторів, QPS &gt; 500, dedicated infra team. Коли p95 search &gt; 100ms на pgvector — міграція.</p>
-            <p style="margin-top:0.3em"><b style="color:var(--box-gate)">OpenSearch</b> — Elastic вже deployed, hybrid BM25+vector з коробки, SIEM/logs infra reuse.</p>
-            <p style="margin-top:0.4em"><b>Migration path:</b> pgvector → OpenSearch (if Elastic exists) → Qdrant (if dedicated). Ніколи не починай з Qdrant на PoC.</p>
-            <p style="margin-top:0.3em"><b>Anti-pattern:</b> «візьмемо Pinecone — managed». Managed vendor = перевіряй SOC2 Type II, data residency UA/EU, SLA з compensations.</p>
-          </div>
-          <div class="fc-back-hint">← back</div>
-        </div></div>
-      </div>
+      </details>
 
-      <div class="card c-out flip-card" tabindex="0" role="button" aria-label="Flip DLS card" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}">
-        <div class="flip-card-inner"><div class="flip-card-face flip-card-front">
-        <div class="card-tag"><svg style="width:1em;height:1em;vertical-align:-0.15em;margin-right:0.3em"><use href="#i-shield-check"/></svg>DOCUMENT-LEVEL SECURITY (DLS) · ПАСТКА POST-FILTERING</div>
-        <div class="card-body" style="font-size:0.83em; line-height:1.55">
+      <details open class="arch-card c-out">
+        <summary>
+          <svg class="arch-ico"><use href="#i-shield-check"/></svg>
+          <span class="arch-tag">DOCUMENT-LEVEL SECURITY</span>
+          <span class="arch-front">in-index pre-filter → 100% видача · post-filter → silent empty</span>
+          <span class="arch-chev">▸</span>
+        </summary>
+        <div class="arch-detail" style="font-size:0.82em; line-height:1.5">
           <p style="margin-bottom:0.35em"><b style="color:var(--lilac)">Чому у банку виникає DLS:</b> Документи мають різний гриф (публічні оферти, ДСК, закриті формули ризиків). Копілот один, але клієнт і андеррайтер мають бачити різне.</p>
-
-          <div style="font-family:var(--font-mono); font-size:0.75em; line-height:1.45; background:rgba(0,0,0,0.4); padding:0.5em 0.7em; border-radius:4px; margin:0.45em 0; border:1px solid rgba(255,255,255,0.12)">
-            <div style="color:var(--error); font-weight:700">❌ POST-FILTERING (Пошук по всій базі ──► фільтр у коді Python):</div>
-            Запит ──► [Векторний пошук] ──► Top-3: [🔒 ДСК, 🔒 Ризики] ──► [RBAC] ──► <b style="color:var(--error)">0 знайдено! ❌</b>
-            <div style="color:var(--accent); font-weight:700; margin-top:0.4em">✔ IN-INDEX PRE-FILTERING (Предикат всередині графа HNSW):</div>
+          <div style="font-family:var(--font-mono); font-size:0.78em; line-height:1.45; background:rgba(0,0,0,0.4); padding:0.5em 0.7em; border-radius:4px; margin:0.4em 0; border:1px solid rgba(255,255,255,0.12)">
+            <div style="color:var(--error); font-weight:700">❌ POST-FILTERING (Пошук по всій базі ──► фільтр у Python):</div>
+            Запит ──► [Vector] ──► Top-3: [🔒 ДСК, 🔒 Ризики] ──► [RBAC] ──► <b style="color:var(--error)">0 знайдено ❌</b>
+            <div style="color:var(--accent); font-weight:700; margin-top:0.35em">✔ IN-INDEX PRE-FILTERING (Предикат всередині графа HNSW):</div>
             Запит+Роль ──► [HNSW: обхід ТІЛЬКИ дозволених] ──► Top-3: [📄 Оферта, 📄 Тариф] ──► <b style="color:var(--accent)">100% видача ✔</b>
           </div>
-
-          <p style="margin-top:0.4em"><b style="color:var(--accent)">SQL-стандарт у pgvector:</b><br>
-          <code style="font-family:var(--font-mono); font-size:0.92em; color:var(--accent)">WHERE allowed_roles &amp;&amp; :user_roles AND effective_date &lt;= CURRENT_DATE</code><br>
-          Граф HNSW крокує <b>виключно</b> дозволеними вузлами. 100% захист від витоку і гарантія непорожньої видачі.</p>
+          <p style="margin-top:0.3em"><b style="color:var(--accent)">SQL-стандарт у pgvector:</b><br>
+          <code style="font-family:var(--font-mono); font-size:0.9em; color:var(--accent)">WHERE allowed_roles &amp;&amp; :user_roles AND effective_date &lt;= CURRENT_DATE</code></p>
+          <hr style="border:none; border-top:1px dashed var(--border-primary); margin:0.6em 0 0.4em">
+          <p style="font-size:0.82em; font-weight:700; letter-spacing:0.08em; color:var(--box-out); text-transform:uppercase; margin-bottom:0.3em">How to test + regulatory</p>
+          <p><b>Smoke test:</b> same query as (а) клієнт і (б) андеррайтер → очікуй різні top-K, нуль ДСК-документів у клієнта.</p>
+          <p style="margin-top:0.25em"><b>Golden set:</b> 50 queries × 3 ролі = 150 перевірок. Будь-який leak ДСК → P0 incident.</p>
+          <p style="margin-top:0.25em"><b>Регуляторика:</b> Ст. 60 ЗУ «Про банки» + GDPR Art. 32. Pre-filter = «технічний захист»; post-filter = «софт. гарантія без доказу».</p>
+          <p style="margin-top:0.25em"><b>Audit:</b> log <code>user_roles</code> + <code>retrieved_doc_ids</code> на кожному запиті.</p>
         </div>
-        </div>
-        <div class="flip-card-face flip-card-back">
-          <div class="card-tag">DLS · HOW TO TEST + REG</div>
-          <div class="card-body" style="font-size:0.82em; line-height:1.5">
-            <p><b>Smoke test:</b> same query as (а) клієнт і (б) андеррайтер → очікуй різні top-K, нуль документів з грифом ДСК у клієнта.</p>
-            <p style="margin-top:0.3em"><b>Golden set:</b> 50 queries × 3 ролі = 150 перевірок. Будь-який leak ДСК у клієнта → P0 incident.</p>
-            <p style="margin-top:0.3em"><b>Регуляторика:</b> Ст. 60 ЗУ «Про банки» (банківська таємниця) + GDPR Art. 32 (technical safeguards). Pre-filter = «технічний захист», post-filter = «софтверна гарантія без доказу».</p>
-            <p style="margin-top:0.3em"><b>Anti-pattern №2:</b> копіювати документи в окремі індекси за ролями → 3× storage + sync-pain + stale data. Один індекс + predicate = правильно.</p>
-            <p style="margin-top:0.3em"><b>Audit:</b> log <code>user_roles</code> та <code>retrieved_doc_ids</code> на кожному запиті — для recovery у разі витоку.</p>
-          </div>
-          <div class="fc-back-hint">← back</div>
-        </div></div>
-      </div>
+      </details>
     </div>
     <div class="strip">
       <b>ЗОЛОТЕ ПРАВИЛО SOLUTION ARCHITECT:</b> До 5 млн векторів починайте з pgvector (індекс HNSW). Завжди проєктуйте In-Index Pre-filtering: фільтрація прав доступу на рівні бекенду (Post-filtering) гарантовано призводить до «мовчазних порожніх відповідей» у продакшні.
