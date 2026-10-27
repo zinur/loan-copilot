@@ -526,14 +526,14 @@ html, body {
 
 .flow-grid {
   position:relative; z-index:2;
-  width:100%; height:100%; display:grid; gap:3.5em 1.6em;
+  width:100%; height:100%; display:grid; gap:2em 1.6em;
   align-content:center;
 }
-.flow-grid-snake-6 { grid-template-columns:repeat(6, 1fr); grid-auto-rows:8.5em; }
+.flow-grid-snake-6 { grid-template-columns:repeat(6, 1fr); grid-auto-rows:13em; }
 
 .flow-card {
   perspective:1200px; cursor:pointer;
-  min-height:8em;
+  min-height:10em;
 }
 .flow-card-inner {
   position:relative; width:100%; height:100%;
@@ -607,7 +607,10 @@ html, body {
 .fc-back-body {
   font-size:0.72em; color:var(--text-secondary);
   line-height:1.4;
+  overflow-y:auto; flex:1; min-height:0;
 }
+.fc-back-body p { margin-bottom:0.3em; }
+.fc-back-body p:last-child { margin-bottom:0; }
 .fc-back-body b { color:var(--text-primary); }
 .fc-back-hint {
   margin-top:auto; font-size:0.58em; color:var(--text-dim);

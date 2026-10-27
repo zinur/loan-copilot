@@ -27,16 +27,28 @@
 | Поле | Значення |
 |------|----------|
 | Name | `loan-policies-ds` |
-| Type | Markdown collection (hybrid: BM25 + dense) |
+| **Description** | `Внутрішні банківські регламенти кредитування: политика видачі consumer loans (POL-LOAN-01), SOP ануїтетного розрахунку + 4-tier policy matrix (SOP-CREDIT-02), Постанова НБУ №351 про операційний ризик. Використовується Eligibility Agent для grounded refusals з обов'язковою цитатою § пункту. effective_date metadata фільтрує застарілі версії регламентів.` |
+| **Type** | **`file`** (CodeMie File datasource — приймає `.md`, `.pdf`, `.docx`, `.txt`, `.json`) |
+| **Embedding model** | **`text-embedding-ada-002`** (OpenAI Ada · 1536-dim) |
 | Chunk size | 500 tokens |
 | Chunk overlap | 50 tokens |
-| Reranker | BGE-reranker (if available) або Cohere Rerank |
-| Metadata filter | `effective_date` (datetime) |
+| Reranker | BGE-reranker (if available) або Cohere Rerank — на retrieval level |
+| Metadata | `effective_date` (datetime) — передається як file metadata |
+
+> **Чому важлива description:** CodeMie показує її у Assistant → Datasources
+> picker, коли agent вирішує, у який datasource робити retrieval. Якщо
+> у tenant кілька датасорсів (напр., `loan-policies-ds`, `product-catalog-ds`,
+> `nbu-regulations-ds`), description допомагає LLM-planner обрати правильний.
+> Пустий опис → agent іноді шукає у неправильному — класичний RAG failure.
 
 **Upload:** 3 файли з `module_2_grounding/data/policies/`:
 - `POL-LOAN-01.md` (політика кредитування, ФОП §4.2.1)
 - `SOP-CREDIT-02.md` (ануїтет, PTI, 4-tier matrix §5)
 - `REG-NBU-351.md` (постанова НБУ, валютні обмеження)
+
+> Інші альтернативи для production (якщо файли живуть у Git):
+> `git` datasource (indexs repository) · `confluence` (if PB has Confluence space) · `azure_devops_wiki`.
+> Для workshop demo беремо найпростіший — File upload.
 
 Перевір індексацію: Datasource → Test query → `"ФОП менше 6 місяців"` →
 має повернути `POL-LOAN-01 §4.2.1` на позиції Top-1 після reranker.
