@@ -399,12 +399,12 @@ states:
           "reason":    {"type": "string"},
           "escalate_to_human": {"type": "boolean"}
         },
-        "required": ["eligible", "citations", "reason"]
+        "required": ["eligible", "citations", "reason", "escalate_to_human"]
       }
     resolve_dynamic_values_in_prompt: true
     next:
       condition:
-        expression: "eligible == True and escalate_to_human == False"
+        expression: "eligible == True and escalate_to_human != True"
         then: kyc-state
         otherwise: end
 
