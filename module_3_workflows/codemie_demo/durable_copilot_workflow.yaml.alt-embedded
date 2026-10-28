@@ -410,8 +410,39 @@ states:
     next:
       condition:
         expression: "kyc_passed == True"
-        then: credit-history-state
+        then: consent-awaiting-state
         otherwise: end
+
+  # ──────────── 5.5 CONSENT · DURABLE HITL (W3-specific) ────────────
+  # Відмінність від W2: тут consent — справжній durable pause (чекає
+  # Дія.Підпис-подібного signed consent від клієнта), а не sync verifier.
+  # Workflow паузиться до webhook `consent.granted` з consent_id.
+  - id: consent-awaiting-state
+    assistant_id: kyc
+    task: |
+      Pause workflow until client provides explicit UBKI consent via
+      external signing flow (Diia.Signature or similar). Resume via
+      webhook with {consent_id, consent_given}.
+
+      Idempotency key: {{thread_id}}::consent.granted
+    interrupt_before: true
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "consent_id":    {"type": "string"},
+          "consent_given": {"type": "boolean"}
+        },
+        "required": ["consent_given"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 1
+    next:
+      condition:
+        expression: "consent_given == True and len(consent_id) > 0"
+        then: credit-history-state
+        otherwise: compensation-state
 
   # ──────────── 6. CREDIT HISTORY (consent_id from upstream) ────────────
   - id: credit-history-state
