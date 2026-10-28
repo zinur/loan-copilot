@@ -28,7 +28,7 @@
 |------|----------|
 | Name | `loan-policies-ds` |
 | **Description** | `Внутрішні банківські регламенти кредитування: политика видачі consumer loans (POL-LOAN-01), SOP ануїтетного розрахунку + 4-tier policy matrix (SOP-CREDIT-02), Постанова НБУ №351 про операційний ризик. Використовується Eligibility Agent для grounded refusals з обов'язковою цитатою § пункту. effective_date metadata фільтрує застарілі версії регламентів.` |
-| **Type** | **`file`** (CodeMie File datasource — приймає `.md`, `.pdf`, `.docx`, `.txt`, `.json`) |
+| **Type** | **`Knowledge Base File`** (internal API: `knowledge_base_file`; CodeMie File datasource — приймає `.md`, `.pdf`, `.docx`, `.txt`, `.json`) |
 | **Embedding model** | **`text-embedding-ada-002`** (OpenAI Ada · 1536-dim) |
 | Chunk size | 500 tokens |
 | Chunk overlap | 50 tokens |
@@ -47,8 +47,14 @@
 - `REG-NBU-351.md` (постанова НБУ, валютні обмеження)
 
 > Інші альтернативи для production (якщо файли живуть у Git):
-> `git` datasource (indexs repository) · `confluence` (if PB has Confluence space) · `azure_devops_wiki`.
-> Для workshop demo беремо найпростіший — File upload.
+> `Code` (git repo index) · `Knowledge Base Confluence` (if PB has
+> Confluence space) · `Knowledge Base Azure DevOps Wiki`.
+> Для workshop demo беремо найпростіший — Knowledge Base File upload.
+>
+> **UI label vs internal name:** CodeMie dropdown показує friendly
+> label ("Knowledge Base File"), внутрішнє значення у API — `knowledge_base_file`.
+> Internal enum `DatasourceTypes.FILE = "file"` використовується
+> тільки у legacy code paths.
 
 Перевір індексацію: Datasource → Test query → `"ФОП менше 6 місяців"` →
 має повернути `POL-LOAN-01 §4.2.1` на позиції Top-1 після reranker.
