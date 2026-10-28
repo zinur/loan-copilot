@@ -53,17 +53,23 @@
 Перевір індексацію: Datasource → Test query → `"ФОП менше 6 місяців"` →
 має повернути `POL-LOAN-01 §4.2.1` на позиції Top-1 після reranker.
 
-### Крок 2. Створи 2 нових worker-assistants (~5 хв)
+### Крок 2. Створи 3 нових worker-assistants (~7 хв)
 
 | Assistant slug | System prompt звідки | Model | Temperature | Attach |
 |---|---|---|---|---|
 | `eligibility-agent` | [`ws_eligibility.prompt.md`](./ws_eligibility.prompt.md) | fast-tier | 0.0 | Datasource: `loan-policies-ds` |
+| `consent-gate-agent` | [`ws_consent_gate.prompt.md`](./ws_consent_gate.prompt.md) | fast-tier | 0.0 | НЕМАЄ (pure text analysis) |
 | `risk-agent` | [`ws_risk.prompt.md`](./ws_risk.prompt.md) | fast-tier | 0.0 | Tools: `kyc.lookup`, `credit_history.pull`, `risk.score` |
 
 **Для `eligibility-agent`:**
 - Attach datasource `loan-policies-ds` ← Критично, без цього RAG не працює.
 - У Description коротко: *"Перевіряє eligibility клієнта за внутрішніми
   регламентами, завжди цитує § SOP/POL/REG."*
+
+**Для `consent-gate-agent`:**
+- НЕ attach tools, НЕ attach datasource — pure keyword/intent extraction.
+- Description: *"Verifies explicit UBKI consent in client's initial message
+  (ЗУ Ст. 7). Generates consent_id if given, else blocks workflow."*
 
 **Для `risk-agent`:**
 - Attach 3 tools (створи у Крок 3 нижче, потім повернись сюди).
@@ -172,8 +178,8 @@ UBKI → risk → underwriter → approve.
 ## Pre-stage checklist (перед live demo)
 
 - [ ] Datasource `loan-policies-ds` з 3 файлами, test query працює.
-- [ ] 2 нових workers (`eligibility-agent`, `risk-agent`) створені,
-      system prompts залиті з repo.
+- [ ] 3 нових workers (`eligibility-agent`, `consent-gate-agent`,
+      `risk-agent`) створені, system prompts залиті з repo.
 - [ ] 3 tools у registry (або inline mocks у prompt).
 - [ ] LLM Gateway вказує на DIAL/Azure EU, НЕ на public OpenAI.
 - [ ] Guardrails (DLP, Input/Output filter) увімкнені на project.

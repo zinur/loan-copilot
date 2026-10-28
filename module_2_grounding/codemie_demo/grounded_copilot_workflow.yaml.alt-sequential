@@ -60,6 +60,8 @@ assistants:
     assistant_id: eligibility-agent     # НОВИЙ у W2
   - id: kyc
     assistant_id: kycagent              # з W1 (тепер з real tool)
+  - id: consent_gate
+    assistant_id: consent-gate-agent    # НОВИЙ у W2 (dedicated verifier)
   - id: credit
     assistant_id: credithistoryagent    # з W1 (тепер з real tool)
   - id: risk
@@ -168,7 +170,7 @@ states:
   # Gate перевіряє чи клієнт у початковому повідомленні явно згодився
   # на запит УБКІ. Справжній durable interrupt — у W3 workflow (sign_awaiting).
   - id: consent-gate
-    assistant_id: intake
+    assistant_id: consent_gate
     task: |
       Проаналізуй початкове повідомлення клієнта: чи є у ньому явна
       згода на запит кредитної історії з УБКІ?
