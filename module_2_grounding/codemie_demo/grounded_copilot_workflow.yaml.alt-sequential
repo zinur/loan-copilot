@@ -114,6 +114,13 @@ states:
       пункт регламенту у форматі [POL-LOAN-01 §4.2.1].
 
       Якщо факту немає у документах — refusal, НЕ ВИГАДУВАТИ політику.
+
+      === OUTPUT ENCODING (КРИТИЧНО) ===
+      JSON повертай з RAW UTF-8 Cyrillic символами, НЕ ескейп.
+      ПРАВИЛЬНО: {"reason": "Клієнт відповідає базовим критеріям"}
+      НЕПРАВИЛЬНО: {"reason": "Клієнт..."}
+      Set json.dumps(ensure_ascii=False) equivalent — пиши literal
+      Cyrillic chars у output string, не Unicode escape sequences.
     output_schema: |
       {
         "type": "object",
