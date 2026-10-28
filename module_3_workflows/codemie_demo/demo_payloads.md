@@ -105,16 +105,21 @@ export EXEC_ID="<copy-from-Executions-tab-after-start>"
    ```
 3. Save → клікни **Continue**.
 
-**Flow continues:** docs-processing executes LLM. Оскільки у demo tenant
-немає real `ocr.extract` tool, LLM часто повертає `ocr_confidence=0`
-та `docs_valid=false` → умова `docs_valid == True and ocr_confidence >= 0.85`
-falsy → workflow routes to **analyst-review-state** (conditional HITL).
+**Flow continues:** docs-processing executes LLM з **demo mode prompt**
+(returns `ocr_confidence=0.95, docs_valid=true, extracted_fields={...}`)
+→ умова pass → kyc-state → **PAUSE** before `consent-awaiting-state`.
 
-### 1b.5. Resume #1.5 — analyst approval (UI) ⚠ conditional
+> **Demo mode:** docs-processor-agent system prompt містить інструкцію
+> повернути mock-happy OCR values без real `ocr.extract` tool. У
+> production real tool поверне genuine confidence. Для тестування
+> **conditional HITL branch** (analyst-review) — додай у payload
+> keyword `OCR_FAIL_DEMO` і LLM поверне низький confidence →
+> workflow routes to analyst-review-state (див. 1b.5).
 
-Якщо після docs-upload workflow paused і UI показує
-**analyst-review-state** у pause (або docs-processing як "last" з
-Interrupted badge):
+### 1b.5. (Optional) Analyst approval detour · trigger via OCR_FAIL_DEMO
+
+Якщо запускаєш з payload що містить `OCR_FAIL_DEMO` keyword, workflow
+піде на analyst-review-state замість kyc-state. Тоді:
 
 1. **Edit** → paste output для `analyst-review-state`:
    ```json
@@ -125,14 +130,13 @@ Interrupted badge):
    ```
 2. **Continue** → routes to `kyc-state`.
 
-> **ВАЖЛИВО про Edit semantic:** Edit встановлює output для **НАСТУПНОГО
-> paused state** (той, що blocked by interrupt_before), а НЕ для
-> попереднього completed state. UI може показувати попередній state
-> як "current" з Interrupted badge — це just visual pointer. Завжди
-> дивися на **Input prompt** paused state'а щоб зрозуміти що саме
-> очікується у Edit.
+Це показ **conditional HITL** patterns у залі.
 
-**Flow continues:** kyc-state → **PAUSE** before `consent-awaiting-state`.
+> **Edit semantic:** Edit встановлює output для state **blocked by
+> `interrupt_before`** (next to run), не для попереднього completed.
+> UI може показувати попередній state як "current" з Interrupted badge —
+> це visual pointer. Дивися **Input prompt** щоб зрозуміти що саме
+> очікується.
 
 ### 1c. Resume #2 — client consent via Дія.Підпис (UI) ⭐ W3-specific
 

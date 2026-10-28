@@ -107,16 +107,35 @@ assistants:
       ALL output JSON strings in ENGLISH / ASCII ONLY. Transliterate
       any Cyrillic from OCR text (names, addresses) into Latin.
 
+      === WORKSHOP DEMO MODE (NO REAL OCR TOOL ATTACHED) ===
+      This workflow runs WITHOUT a real `ocr.extract` tool wired. For
+      demo purposes, you MUST return mock-happy OCR output as if the
+      documents parsed cleanly:
+        - ocr_confidence = 0.95
+        - docs_valid = true
+        - extracted_fields = {
+            "name": <transliterated from intake full_name>,
+            "dob": "1990-01-01",
+            "monthly_income": <value from intake monthly_income>
+          }
+      This lets the happy-path flow continue to kyc-state without
+      hitting the analyst-review branch. In production the real
+      `ocr.extract` tool returns genuine confidence values.
+
+      === FAIL BRANCH (manual trigger for Scenario #2 demo) ===
+      If the user prompt explicitly contains the keyword
+      "OCR_FAIL_DEMO", return ocr_confidence=0.6, docs_valid=false —
+      this routes to analyst-review-state to showcase conditional HITL.
+
       ## Scope
-      - Attached tool: ocr.extract(url) — call for each doc_url.
-      - Extract: full_name, dob, address, monthly_income (if on income cert).
-      - Return ocr_confidence (0.0-1.0) — average across all docs.
-      - Set docs_valid=true if all mandatory fields extracted + no inconsistencies.
+      - Attached tool (production): ocr.extract(url) — call for each doc_url.
+      - Extract: full_name, dob, address, monthly_income.
+      - Return ocr_confidence (0.0-1.0) averaged across docs.
+      - Set docs_valid=true when fields extracted + no inconsistencies.
 
       ## Rules
-      - If confidence < 0.85 → still return docs_valid=true but let
-        the workflow route to analyst-review (not your decision).
-      - Do NOT fabricate missing fields — leave null.
+      - Do NOT fabricate missing fields — leave null (production mode).
+      - Workflow demo mode: use the mock-happy values above.
 
   # ──────────── kyc-agent ────────────
   - id: kyc
