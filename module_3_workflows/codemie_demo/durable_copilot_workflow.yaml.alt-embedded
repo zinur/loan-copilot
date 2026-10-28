@@ -1,0 +1,672 @@
+# ─────────────────────────────────────────────────────────────────────
+# W3 Sequential workflow — Durable Loan Copilot (FSM + HITL + Saga)
+# EMBEDDED variant: all 8 assistants inline (`system_prompt`), zero
+# reference to existing CodeMie assistants.
+#
+# Design patterns inherited from W2 alt-embedded:
+#   • English-only JSON internals (sidesteps CodeMie Workflow Executor
+#     Unicode escape bug — structured_tool_agent.py:71 uses json.dumps
+#     without ensure_ascii=False).
+#   • Translation instructions in each assistant system_prompt.
+#   • "sec." instead of "§" in policy citations (non-ASCII escape).
+#   • Required boolean fields in output_schema for conditionals.
+#   • Tolerant conditions (`!= True` instead of `== False`).
+#
+# W3 adds over W2:
+#   • `interrupt_before: true` on 3 real HITL waits:
+#       docs-requested  (24-48h durable wait for client upload)
+#       offer           (7d durable wait for client decision)
+#       sign-awaiting   (durable wait until Diia.Signature webhook)
+#   • `interrupt_before: true` on 2 conditional HITL gates:
+#       analyst-review     (OCR confidence < 0.85)
+#       committee-review   (grey-zone risk band C)
+#   • Pre-write evaluator gate (`verify-before-send-state`)
+#   • Saga compensation state (rollback on cancellation / verify-fail)
+#   • Idempotency key handling (`sign-awaiting-state` dedup webhooks)
+#
+# END-STATE: Loan Copilot survives K8s `kill -9` at 3:00 AM, resumes
+# via webhook, does NOT duplicate 150k UAH disbursements, performs
+# Saga rollback on cancel.
+#
+# Deploy: Workflows → + Create Workflow → YAML view → paste → Save.
+# No separate Assistants needed.
+# Resume webhooks: POST /api/v1/workflows/{id}/executions/{thread_id}/resume
+# ─────────────────────────────────────────────────────────────────────
+
+name: loan-copilot-durable-w3-embedded
+description: >
+  Durable Loan Copilot (W3) with embedded assistants: 11 states, 3
+  real durable waits (24h/7d/signed), 2 conditional HITL gates, 1
+  evaluator pre-write gate, Saga compensation on cancellation. All
+  system prompts inline.
+mode: Sequential
+
+# ----------------------------------------------------------------------------
+# ASSISTANTS — all inline (`system_prompt`), no `assistant_id`
+# ----------------------------------------------------------------------------
+assistants:
+
+  # ──────────── intake-agent ────────────
+  - id: intake
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Intake specialist in Loan Copilot. You collect and
+      validate a consumer loan application from the client's message.
+
+      === INPUT LANGUAGE / OUTPUT LANGUAGE ===
+      Client messages ARRIVE IN UKRAINIAN. Transliterate person names
+      into Latin letters (e.g. "Марія Коваленко" → "Maria Kovalenko").
+      Return ALL output JSON strings in ENGLISH / ASCII ONLY. Never
+      output Cyrillic in JSON values — they will be escape-serialized.
+
+      ## Scope
+      Collect 8 fields: full_name, tax_id (10 digits), phone (+380),
+      email, monthly_income, amount, term_months, purpose.
+      Validate formats. Return intake_complete=true when all valid.
+
+      ## Rules
+      - Do NOT call KYC / credit history / any tools.
+      - Do NOT assess creditworthiness.
+      - If a field is missing, mark intake_complete=false.
+
+  # ──────────── eligibility-agent (RAG) ────────────
+  - id: eligibility
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Eligibility specialist. You check whether the client
+      is eligible for the requested loan per the bank's internal
+      regulations via RAG over loan-policies-ds.
+
+      === INPUT / OUTPUT LANGUAGE ===
+      RAG datasource is Ukrainian (POL-LOAN-*, SOP-CREDIT-*, REG-NBU-*).
+      Understand internally, but ALWAYS return English ASCII in output
+      JSON. Use "sec." as the section marker (e.g. [POL-LOAN-01 sec.4.2.1])
+      — § is non-ASCII and will escape.
+
+      ## RAG discipline
+      - top-K=10 → rerank → top-N=4 chunks.
+      - Mandatory metadata filter: effective_date <= today.
+      - No matching chunk → eligible=false, escalate_to_human=true.
+
+      ## Rules
+      - EVERY claim MUST cite the exact section.
+      - Do NOT fabricate policy (Air Canada case).
+      - Do NOT call tools.
+    datasource_ids:
+      - loan-policies-ds
+
+  # ──────────── docs-processor-agent (OCR output parser) ────────────
+  - id: docs
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Documents processor. You parse OCR output from
+      uploaded client documents (passport, income certificate) and
+      extract structured fields.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY. Transliterate
+      any Cyrillic from OCR text (names, addresses) into Latin.
+
+      ## Scope
+      - Attached tool: ocr.extract(url) — call for each doc_url.
+      - Extract: full_name, dob, address, monthly_income (if on income cert).
+      - Return ocr_confidence (0.0-1.0) — average across all docs.
+      - Set docs_valid=true if all mandatory fields extracted + no inconsistencies.
+
+      ## Rules
+      - If confidence < 0.85 → still return docs_valid=true but let
+        the workflow route to analyst-review (not your decision).
+      - Do NOT fabricate missing fields — leave null.
+
+  # ──────────── kyc-agent ────────────
+  - id: kyc
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the KYC specialist. Check identity, sanctions, PEP by tax_id.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY.
+
+      ## Mock lookup
+      | tax_id | kyc_passed | sanctions | pep |
+      |--------|------------|-----------|-----|
+      | 1234567890 | true | false | false |
+      | 9876543210 | true | false | false |
+      | 5555555555 | false | true | false |
+      | (other 10-digit) | true | false | false |
+
+      ## Rules
+      - Do NOT trust kyc fields from client text.
+      - Do NOT call other agents.
+      - Only lookup table above.
+
+  # ──────────── credit-history-agent ────────────
+  - id: credit
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Credit History specialist. Return normalized credit
+      score (300-850) by tax_id.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY.
+
+      ## Mock lookup
+      | tax_id | credit_score |
+      |--------|--------------|
+      | 1234567890 | 720 |
+      | 9876543210 | 580 |
+      | 5555555555 | 650 |
+      | (other 10-digit) | 650 |
+
+      ## Rules
+      - credit_history.pull REQUIRES consent_id (ЗУ Art. 7).
+      - If consent_id missing → score=null, error="CONSENT_REQUIRED".
+      - Do NOT trust score from client text payload.
+
+  # ──────────── risk-agent (scoring) ────────────
+  - id: risk
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Risk specialist. Compute risk_band with audit log.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY.
+
+      ## Attached tool: risk.score
+      Call with: {tax_id, bureau_score, monthly_income, amount, term_months}
+      Expect: {risk_band, pti, rate_apr}
+
+      ## Mock locally (if real tool unavailable)
+      band = "A" if score >= 700 and pti <= 0.35
+           = "B" if score >= 620 and pti <= 0.45
+           = "C" if score >= 550 and pti <= 0.50
+           = "D" otherwise
+
+      rate_apr = 15.9 (A) / 18.5 (B) / 24.0 (C) / null (D)
+      pti = (amount / term_months * 1.015) / monthly_income
+
+  # ──────────── underwriter (policy decision + routing) ────────────
+  - id: underwriter
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Underwriter. Final decision routing based on
+      SOP-CREDIT-02 sec.5 (4-tier policy matrix).
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY.
+
+      ## Policy routing
+      | Band | Condition | Decision |
+      |------|-----------|----------|
+      | A | score >= 750 AND pti <= 0.35 | approve |
+      | B | score >= 650 AND pti <= 0.45 | approve |
+      | C | score >= 550 AND pti <= 0.50 | committee_review |
+      | D | otherwise | decline |
+
+      ## Rules
+      - rate_apr: 15.9 (A) / 18.5 (B) / 24.0 (C) / null (D).
+      - Do NOT call tools (all data in state).
+      - Do NOT negotiate rate with client.
+
+  # ──────────── contract-draft-agent (template renderer + limit reserve) ────────────
+  - id: contract
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Contract Draft specialist. You render the contract
+      template and reserve the limit in the card backend.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY. Contract body
+      text (if generated) can be UA — but contract_id and status
+      fields in output JSON must stay English.
+
+      ## Attached tool: contract.draft
+      Call with: {tax_id, amount, term_months, rate_apr}
+      Side-effect: internal write — RESERVES limit in card backend.
+      Expect: {contract_id, contract_text_url, limit_reserved: true}
+
+      ## CRITICAL
+      - If downstream flow crashes AFTER this state, Saga MUST release
+        the reserved limit (compensation-state handles rollback).
+      - Return contract_id for Saga's reference.
+
+  # ──────────── verify-before-send-agent (pre-write evaluator gate) ────────────
+  - id: verifier
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Pre-write Verifier. Compare contract fields against
+      upstream state values. BLOCK on any mismatch.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY.
+
+      ## Checks
+      - contract.rate_apr == underwriter.rate_apr
+      - contract.amount == intake.amount
+      - contract.term == intake.term_months
+      - contract.borrower_tax_id == intake.tax_id
+
+      ## Rules
+      - Any mismatch → verify_passed=false, list in discrepancies[].
+      - On block → DO NOT send to client; workflow routes to compensation.
+      - No LLM reasoning on numbers — strict equality only.
+
+  # ──────────── compensation-agent (Saga rollback) ────────────
+  - id: compensator
+    model: gpt-4o-mini
+    system_prompt: |
+      You are the Compensation specialist. You execute Saga rollback
+      actions for cancellation / rejection / verify-fail paths.
+
+      === OUTPUT LANGUAGE ===
+      ALL output JSON strings in ENGLISH / ASCII ONLY. The client
+      notification text (if composed inline) can be UA — but status
+      fields in output JSON must stay English.
+
+      ## Attached tools
+      - limit.release(contract_id) — frees reserved card limit.
+      - contract.cancel(contract_id) — invalidates draft.
+      - audit.write(event, reason) — persistent audit log.
+      - notify.sms(tax_id, text) — client notification.
+
+      ## Rollback order
+      1. If limit_reserved → limit.release first (highest priority).
+      2. If contract_id present → contract.cancel.
+      3. audit.write("limit_released_rollback", reason).
+      4. notify.sms with UA text: "Заявку скасовано, резерв знято."
+
+      ## Rules
+      - Rollback MUST be idempotent — safe to retry.
+      - Return final status flags, not raw tool responses.
+
+# ----------------------------------------------------------------------------
+# STATES — 11-node durable FSM
+# ----------------------------------------------------------------------------
+states:
+
+  # ──────────── 1. INTAKE ────────────
+  - id: intake-state
+    assistant_id: intake
+    task: |
+      Extract the structured application from the client's message
+      (UA input, English JSON output).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "full_name":       {"type": "string"},
+          "tax_id":          {"type": "string"},
+          "amount":          {"type": "number"},
+          "term_months":     {"type": "integer"},
+          "monthly_income":  {"type": "number"},
+          "purpose":         {"type": "string"},
+          "intake_complete": {"type": "boolean"}
+        },
+        "required": ["intake_complete"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "intake_complete == True"
+        then: docs-requested-state
+        otherwise: end
+
+  # ──────────── 2. DOCS REQUESTED · DURABLE WAIT 24-48h ────────────
+  - id: docs-requested-state
+    assistant_id: intake
+    task: |
+      Notify client (UA text, delivered via separate channel, NOT this
+      state's output): "Для продовження завантаж фото паспорта та
+      довідки про доходи у Privat24". Workflow pauses here.
+
+      NOTE: this state does NOT roundtrip through LLM — it's a UI
+      prompt + interrupt. Resume via webhook `docs.uploaded`.
+
+      Idempotency key: {{thread_id}}::docs.uploaded
+    interrupt_before: true
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "docs_uploaded": {"type": "boolean"},
+          "doc_urls": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["docs_uploaded"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 1
+    next:
+      condition:
+        expression: "docs_uploaded == True"
+        then: docs-processing-state
+        otherwise: compensation-state
+
+  # ──────────── 3. DOCS PROCESSING · OCR ────────────
+  - id: docs-processing-state
+    assistant_id: docs
+    task: |
+      Received URLs: {{doc_urls}}.
+      Call ocr.extract(url) for each → parse structured fields.
+      Return ocr_confidence (0.0-1.0) averaged across docs.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "extracted_fields": {"type": "object"},
+          "ocr_confidence":   {"type": "number"},
+          "docs_valid":       {"type": "boolean"}
+        },
+        "required": ["ocr_confidence", "docs_valid"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 3
+      initial_interval: 2.0
+      backoff_factor: 2.0
+    next:
+      condition:
+        expression: "docs_valid == True and ocr_confidence >= 0.85"
+        then: kyc-state
+        otherwise: analyst-review-state
+
+  # ──────────── 4. ANALYST REVIEW · CONDITIONAL HITL (OCR < 0.85) ────────────
+  - id: analyst-review-state
+    assistant_id: docs
+    task: |
+      OCR confidence {{ocr_confidence}} < 0.85 — human analyst review
+      required. Workflow pauses until manual approval webhook.
+    interrupt_before: true
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "analyst_approved": {"type": "boolean"},
+          "analyst_notes":    {"type": "string"}
+        },
+        "required": ["analyst_approved"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "analyst_approved == True"
+        then: kyc-state
+        otherwise: compensation-state
+
+  # ──────────── 5. KYC ────────────
+  - id: kyc-state
+    assistant_id: kyc
+    task: |
+      Lookup tax_id={{tax_id}} and return result.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "kyc_passed": {"type": "boolean"}
+        },
+        "required": ["kyc_passed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "kyc_passed == True"
+        then: credit-history-state
+        otherwise: end
+
+  # ──────────── 6. CREDIT HISTORY (consent_id from upstream) ────────────
+  - id: credit-history-state
+    assistant_id: credit
+    task: |
+      Call credit_history.pull({tax_id: "{{tax_id}}",
+      consent_id: "{{consent_id}}"}). Return UBKI score.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "credit_score": {"type": "integer"}
+        },
+        "required": ["credit_score"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    retry_policy:
+      max_attempts: 3
+      initial_interval: 1.0
+      backoff_factor: 2.0
+    next:
+      condition:
+        expression: "credit_score >= 500"
+        then: underwriter-state
+        otherwise: end
+
+  # ──────────── 7. UNDERWRITER (4-tier policy routing) ────────────
+  - id: underwriter-state
+    assistant_id: underwriter
+    task: |
+      Compute PMT, PTI, policy band per SOP-CREDIT-02 sec.5.
+      Route: approve → contract draft, committee_review → committee gate,
+      decline → end.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "risk_band":  {"type": "string", "enum": ["A", "B", "C", "D"]},
+          "decision":   {"type": "string", "enum": ["approve", "decline", "committee_review"]},
+          "pti":        {"type": "number"},
+          "rate_apr":   {"type": "number"}
+        },
+        "required": ["decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      switch:
+        cases:
+          - condition: "decision == 'approve'"
+            state_id: contract-draft-state
+          - condition: "decision == 'committee_review'"
+            state_id: committee-review-state
+        default: end
+
+  # ──────────── 8. COMMITTEE REVIEW · CONDITIONAL HITL (grey zone C) ────────────
+  - id: committee-review-state
+    assistant_id: underwriter
+    task: |
+      Risk band = {{risk_band}} (grey zone, Tier C: score 550-650).
+      Workflow pauses until credit committee decision webhook.
+    interrupt_before: true
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "committee_decision": {"type": "string", "enum": ["approve", "decline"]},
+          "committee_notes":    {"type": "string"}
+        },
+        "required": ["committee_decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "committee_decision == 'approve'"
+        then: contract-draft-state
+        otherwise: end
+
+  # ──────────── 9. CONTRACT DRAFT · TOOL CALL (reserves limit) ────────────
+  - id: contract-draft-state
+    assistant_id: contract
+    task: |
+      Call contract.draft({tax_id, amount, term_months, rate_apr}).
+      Side-effect: internal-write — RESERVES limit in card backend.
+
+      CRITICAL: if downstream flow crashes, Saga must release the
+      reserve (compensation-state handles this).
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "contract_id":       {"type": "string"},
+          "contract_text_url": {"type": "string"},
+          "limit_reserved":    {"type": "boolean"}
+        },
+        "required": ["contract_id", "limit_reserved"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: verify-before-send-state
+
+  # ──────────── 10. VERIFY BEFORE SEND · PRE-WRITE EVALUATOR GATE ────────────
+  - id: verify-before-send-state
+    assistant_id: verifier
+    task: |
+      Pre-write gate. Compare:
+        contract.rate_apr == {{rate_apr}}
+        contract.amount == {{amount}}
+        contract.term == {{term_months}}
+        contract.borrower_tax_id == {{tax_id}}
+
+      Any mismatch → BLOCK + escalate to engineer. DO NOT send to client.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "verify_passed":  {"type": "boolean"},
+          "discrepancies":  {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["verify_passed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "verify_passed == True"
+        then: offer-state
+        otherwise: compensation-state
+
+  # ──────────── 11. OFFER · DURABLE WAIT 7d ────────────
+  - id: offer-state
+    assistant_id: intake
+    task: |
+      Send client personal offer (UA text, delivered via separate
+      channel): amount={{amount}}, term={{term_months}} months,
+      rate={{rate_apr}}%, PTI={{pti}}. Await accept/reject (up to 7d).
+
+      Idempotency key: {{thread_id}}::offer.decision
+    interrupt_before: true
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "client_decision": {"type": "string", "enum": ["accept", "reject", "expired"]}
+        },
+        "required": ["client_decision"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      condition:
+        expression: "client_decision == 'accept'"
+        then: sign-awaiting-state
+        otherwise: compensation-state
+
+  # ──────────── 12. SIGN AWAITING · DURABLE WAIT + IDEMPOTENCY ────────────
+  - id: sign-awaiting-state
+    assistant_id: contract
+    task: |
+      Client signs via Diia.Signature. Await `contract.signed` webhook.
+
+      IDEMPOTENCY (CRITICAL):
+      Webhook may arrive 2+ times (network, Diia retry).
+      Composite key: SHA256({{tax_id}}::{{contract_id}}::{{event_id}}).
+      If key already in DB `processed_events` → return {disbursed: true}
+      WITHOUT calling disburse again.
+
+      Call check_idempotency(event_key):
+        - exists → return cached result (no disburse)
+        - not_exists → call disburse(contract_id, amount) + write key
+    interrupt_before: true
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "disbursed":      {"type": "boolean"},
+          "disburse_id":    {"type": "string"},
+          "event_key":      {"type": "string"},
+          "was_duplicate":  {"type": "boolean"}
+        },
+        "required": ["disbursed"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: end
+      store_in_context: true
+
+  # ──────────── X. COMPENSATION · SAGA ROLLBACK ────────────
+  - id: compensation-state
+    assistant_id: compensator
+    task: |
+      Execute compensating actions for cancellation / rejection /
+      verify-fail:
+
+      1. If limit_reserved == true → call limit.release(contract_id).
+      2. If contract_id not null → call contract.cancel(contract_id).
+      3. Write audit event `limit_released_rollback` with reason.
+      4. Notify client (SMS, UA text): "Заявку скасовано, резерв знято."
+
+      Return final status flags.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "limit_released":     {"type": "boolean"},
+          "contract_cancelled": {"type": "boolean"},
+          "notification_sent":  {"type": "boolean"}
+        },
+        "required": ["limit_released"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: end
+      store_in_context: true
+
+# ----------------------------------------------------------------------------
+# WORKFLOW SETTINGS
+# ----------------------------------------------------------------------------
+recursion_limit: 50
+max_concurrency: 1
+enable_summarization_node: false
+
+# Durable Waits — CodeMie uses Postgres checkpointer when
+# `interrupt_before: true` is set. For production:
+#   Admin → Workflows → Checkpointer → Postgres (NOT Memory).
+# Memory checkpointer loses state on pod restart. For demo — OK.
+
+# ----------------------------------------------------------------------------
+# NOTES
+# ----------------------------------------------------------------------------
+# 1. Resume webhooks (external systems → CodeMie):
+#    POST /api/v1/workflows/{workflow_id}/executions/{thread_id}/resume
+#    Body: output_schema fields for the paused state.
+#
+#    Examples:
+#    - docs.uploaded: {"docs_uploaded": true, "doc_urls": [...]}
+#    - analyst.decision: {"analyst_approved": true, "analyst_notes": "..."}
+#    - committee.decision: {"committee_decision": "approve", "committee_notes": "..."}
+#    - offer.decision: {"client_decision": "accept"}
+#    - contract.signed: {"disbursed": true, "event_key": "<sha256>", ...}
+#
+# 2. Idempotency — enforced at TOOL level, not prompt level. The
+#    `check_idempotency` tool must perform a real DB check, not LLM
+#    reasoning. For workshop mock — Python wrapper checks a dict.
+#
+# 3. Saga compensation — called from 4 branches:
+#    - docs_requested timeout → compensation
+#    - analyst_review reject → compensation
+#    - verify_before_send fail → compensation
+#    - offer reject / expire → compensation
+#    All route to the same compensation-state (DRY).
+#
+# 4. Retry policies — tool-calling states only (docs-processing,
+#    credit-history). HITL states: max_attempts=1 (never retry a human).
+#
+# 5. Encoding — W3 inherits W2 alt-embedded's ASCII-English JSON
+#    strategy. Client-facing UA text (SMS/push notifications, contract
+#    body) lives OUTSIDE the structured output path, delivered via
+#    separate channels (notify.sms tool, PDF renderer). JSON state
+#    stays English → no Unicode escape bug.
+# ----------------------------------------------------------------------------
