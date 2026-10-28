@@ -13,16 +13,21 @@
 #   • Tolerant conditions (`!= True` instead of `== False`).
 #
 # W3 adds over W2:
-#   • `interrupt_before: true` on 3 real HITL waits:
-#       docs-requested  (24-48h durable wait for client upload)
-#       offer           (7d durable wait for client decision)
-#       sign-awaiting   (durable wait until Diia.Signature webhook)
-#   • `interrupt_before: true` on 2 conditional HITL gates:
-#       analyst-review     (OCR confidence < 0.85)
-#       committee-review   (grey-zone risk band C)
+#   • `interrupt_before: true` on 6 webhook-emulated external deps:
+#       webhook_docs_uploaded      (Privat24 client doc upload)
+#       webhook_analyst_decision   (operator approval if OCR < 0.85)
+#       webhook_consent_granted    (Diia.Signature consent to UBKI)
+#       webhook_committee_decision (credit committee if risk band C)
+#       webhook_offer_decision     (client accepts/rejects offer)
+#       webhook_contract_signed    (Diia.Signature contract sign)
 #   • Pre-write evaluator gate (`verify-before-send-state`)
 #   • Saga compensation state (rollback on cancellation / verify-fail)
-#   • Idempotency key handling (`sign-awaiting-state` dedup webhooks)
+#   • Idempotency key handling (`webhook_contract_signed` dedup)
+#
+# NAMING NOTE: `webhook_*` prefix на HITL state'ах показує що це
+# emulation external service dependency — у production state resume'иться
+# через real HTTP webhook / message queue event (Privat24, Дія, Kafka),
+# не через Edit+Continue у UI. Для demo UI Edit грає роль webhook payload.
 #
 # END-STATE: Loan Copilot survives K8s `kill -9` at 3:00 AM, resumes
 # via webhook, does NOT duplicate 150k UAH disbursements, performs
@@ -125,7 +130,7 @@ assistants:
       === FAIL BRANCH (manual trigger for Scenario #2 demo) ===
       If the user prompt explicitly contains the keyword
       "OCR_FAIL_DEMO", return ocr_confidence=0.6, docs_valid=false —
-      this routes to analyst-review-state to showcase conditional HITL.
+      this routes to webhook_analyst_decision to showcase conditional HITL.
 
       ## Scope
       - Attached tool (production): ocr.extract(url) — call for each doc_url.
@@ -327,11 +332,11 @@ states:
     next:
       condition:
         expression: "intake_complete == True"
-        then: docs-requested-state
+        then: webhook_docs_uploaded
         otherwise: end
 
   # ──────────── 2. DOCS REQUESTED · DURABLE WAIT 24-48h ────────────
-  - id: docs-requested-state
+  - id: webhook_docs_uploaded
     assistant_id: intake
     task: |
       Notify client (UA text, delivered via separate channel, NOT this
@@ -387,10 +392,10 @@ states:
       condition:
         expression: "docs_valid == True and ocr_confidence >= 0.85"
         then: kyc-state
-        otherwise: analyst-review-state
+        otherwise: webhook_analyst_decision
 
   # ──────────── 4. ANALYST REVIEW · CONDITIONAL HITL (OCR < 0.85) ────────────
-  - id: analyst-review-state
+  - id: webhook_analyst_decision
     assistant_id: docs
     task: |
       OCR confidence {{ocr_confidence}} < 0.85 — human analyst review
@@ -429,14 +434,14 @@ states:
     next:
       condition:
         expression: "kyc_passed == True"
-        then: consent-awaiting-state
+        then: webhook_consent_granted
         otherwise: end
 
   # ──────────── 5.5 CONSENT · DURABLE HITL (W3-specific) ────────────
   # Відмінність від W2: тут consent — справжній durable pause (чекає
   # Дія.Підпис-подібного signed consent від клієнта), а не sync verifier.
   # Workflow паузиться до webhook `consent.granted` з consent_id.
-  - id: consent-awaiting-state
+  - id: webhook_consent_granted
     assistant_id: kyc
     task: |
       Pause workflow until client provides explicit UBKI consent via
@@ -513,11 +518,11 @@ states:
           - condition: "decision == 'approve'"
             state_id: contract-draft-state
           - condition: "decision == 'committee_review'"
-            state_id: committee-review-state
+            state_id: webhook_committee_decision
         default: end
 
   # ──────────── 8. COMMITTEE REVIEW · CONDITIONAL HITL (grey zone C) ────────────
-  - id: committee-review-state
+  - id: webhook_committee_decision
     assistant_id: underwriter
     task: |
       Risk band = {{risk_band}} (grey zone, Tier C: score 550-650).
@@ -586,11 +591,11 @@ states:
     next:
       condition:
         expression: "verify_passed == True"
-        then: offer-state
+        then: webhook_offer_decision
         otherwise: compensation-state
 
   # ──────────── 11. OFFER · DURABLE WAIT 7d ────────────
-  - id: offer-state
+  - id: webhook_offer_decision
     assistant_id: intake
     task: |
       Send client personal offer (UA text, delivered via separate
@@ -611,11 +616,11 @@ states:
     next:
       condition:
         expression: "client_decision == 'accept'"
-        then: sign-awaiting-state
+        then: webhook_contract_signed
         otherwise: compensation-state
 
   # ──────────── 12. SIGN AWAITING · DURABLE WAIT + IDEMPOTENCY ────────────
-  - id: sign-awaiting-state
+  - id: webhook_contract_signed
     assistant_id: contract
     task: |
       Client signs via Diia.Signature. Await `contract.signed` webhook.
