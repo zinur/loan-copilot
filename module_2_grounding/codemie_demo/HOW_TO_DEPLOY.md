@@ -156,7 +156,16 @@ UBKI → risk → underwriter → approve.
 **Якщо падає:**
 - No citation у eligibility → datasource не indexed, перевір Datasource preview.
 - Tool call fails → перевір RBAC (role на assistant має match tool contract).
-- Workflow крутиться на consent gate → це нормально, interrupt_before works.
+- Workflow термінує на consent-gate з `consent_given=false` → payload не має явної
+  згоди. Для happy path додай у повідомлення: *"Згоден на запит кредитної історії з УБКІ"*.
+
+> **Про consent-gate у W2 demo:** Sequential workflow через "Run workflow"
+> button НЕ підтримує справжні HITL interrupts (CodeMie auto-прогоняє).
+> Тому consent-gate у W2 — це **demo verifier**: LLM аналізує initial
+> payload на наявність явної згоди. Для **справжнього durable HITL**
+> (24h pause до webhook, resume через API) → див. W3 workflow
+> (`durable_copilot_workflow.yaml.alt-sequential` · 5 interrupts: docs,
+> analyst, committee, offer, sign).
 
 ---
 

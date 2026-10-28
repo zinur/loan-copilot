@@ -156,17 +156,25 @@ states:
         then: consent-gate
         otherwise: end
 
-  # ──────────── 4. CONSENT GATE (HITL interrupt) — НОВЕ У W2 ────────────
+  # ──────────── 4. CONSENT GATE (demo verifier · W2) ────────────
+  # ⚠ У W2 демо consent не є справжнім HITL (бо Sequential workflow через
+  # "Run workflow" button прогоняє без зовнішнього resume API call).
+  # Gate перевіряє чи клієнт у початковому повідомленні явно згодився
+  # на запит УБКІ. Справжній durable interrupt — у W3 workflow (sign_awaiting).
   - id: consent-gate
     assistant_id: intake
     task: |
-      Запит у клієнта: "Для розрахунку персональної пропозиції мені потрібна
-      ваша згода на запит кредитної історії в УБКІ. Згода зберігається у
-      нашій системі (ЗУ про захист персональних даних, Ст. 7). Згодні?"
+      Проаналізуй початкове повідомлення клієнта: чи є у ньому явна
+      згода на запит кредитної історії з УБКІ?
 
-      Чекай явного "так" з consent_id (генерується в UI/бекенді).
-      БЕЗ consent_id — НЕ пропускай далі.
-    interrupt_before: true  # HITL pause до recorded consent_id
+      Правила:
+      • Якщо повідомлення містить слова "згоден", "згодна", "так, згоден",
+        "yes", "дозволяю запит УБКІ" → consent_given=true, згенеруй
+        consent_id у форматі "consent-{tax_id}-demo"
+      • Якщо згоди немає, клієнт відмовив, або формулювання неявне →
+        consent_given=false, consent_id=""
+
+      Клієнт tax_id: {{tax_id}} (використай при генерації consent_id)
     output_schema: |
       {
         "type": "object",
