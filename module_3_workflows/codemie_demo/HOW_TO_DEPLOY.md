@@ -17,7 +17,7 @@
 | Pre-write gate | ❌ | ✅ `verify-before-send-agent` (deterministic match) |
 | Saga rollback | ❌ | ✅ `compensation-state` (limit.release + contract.cancel + notify) |
 | Idempotency | ⚠️ (prompt discipline) | ✅ **Tool-level** `check_idempotency` + composite key |
-| Checkpointer | ⚠️ Memory | ✅ **Postgres** (survives `kill -9`) |
+| Checkpointer | n/a (short-lived) | ✅ **Postgres** (default у CodeMie, survives `kill -9`) |
 
 ## Чеклист деплою (~30 хв)
 
@@ -53,15 +53,24 @@ inline mocks у system prompts або скористайся WorldcodeMie MCP mo
 | `contract.cancel(contract_id)` | internal-write (rollback) | Так | module_3_workflows mock |
 | `notify.send(tax_id, template, channel)` | external-write (SMS/email) | Так (deduplication key) | module_3_workflows mock |
 
-### Крок 4. Налаштуй Postgres checkpointer (~5 хв)
+### Крок 4. Checkpointer — nothing to configure (CodeMie-managed)
 
-У **Admin → Workflows → Checkpointer**:
-- Type: `Postgres` (НЕ Memory!)
-- Connection string: `postgres://<pb-internal>/codemie_workflow_checkpoints`
-- Retention: 90 днів (NBU audit)
+У CodeMie checkpointer **hardcoded** на платформі
+(`src/codemie/workflows/checkpoint_saver.py:CheckpointSaver` →
+Postgres через `WorkflowExecution > WorkflowExecutionCheckpoint`
+data model). **Жодного Admin UI toggle немає** — усі workflows з
+`interrupt_before: true` автоматично persistent.
 
-**Чому Postgres:** Memory checkpointer loses state на restart pod'а.
-Для демо scenario #1 (survive `kill -9`) — Memory провалиться.
+**Що треба перевірити (deployment-level, не tenant UI):**
+- CodeMie backend DB = Postgres (не SQLite dev-mode) → якщо PB хостить
+  on-prem, це SRE концерн, не SA task.
+- Retention policy на `workflow_execution_checkpoints` table —
+  налаштовує DBA (90 днів для NBU audit).
+
+**Що робити якщо `kill -9` test проваливається:**
+- Перевір, що CodeMie запущений з `postgres://` connection string,
+  не з `sqlite://` або in-memory (`:memory:`) config.
+- Логи pod'а: шукай рядок `CheckpointSaver initialized with Postgres`.
 
 ### Крок 5. Deploy workflow YAML (~3 хв)
 
@@ -105,8 +114,9 @@ intake → pause на docs-requested → curl resume → OCR → kyc → credit 
 underwriter → contract → verify → pause на offer → curl resume → pause
 на sign → curl resume → disbursed.
 
-**Якщо падає на kill -9 test:** checkpointer = Memory замість Postgres,
-виправ у Admin → Workflows.
+**Якщо падає на kill -9 test:** CodeMie backend running on in-memory
+DB замість Postgres — deployment issue (SRE). Нічого не fix'иш з
+tenant UI, тільки через re-deploy платформи з Postgres connection.
 
 ---
 
@@ -114,7 +124,7 @@ underwriter → contract → verify → pause на offer → curl resume → pau
 
 - [ ] 4 нових W3 workers створені та прикріплені tools
 - [ ] 6 нових W3 tools у registry з mock responses
-- [ ] Postgres checkpointer налаштований (НЕ Memory!)
+- [ ] CodeMie backend на Postgres (checkpointer автоматично persistent)
 - [ ] Workflow YAML завантажений, slug `loan-copilot-durable-w3`
 - [ ] 3 webhook endpoints зареєстровані
 - [ ] Workflow timeouts налаштовані
@@ -129,8 +139,9 @@ underwriter → contract → verify → pause на offer → curl resume → pau
 **"Workflow не паузиться на `interrupt_before`"** → перевір Admin
 → Workflows → Advanced → "auto-resume on interrupt" має бути **OFF**.
 
-**"`kill -9` pod'а → workflow lost"** → Memory checkpointer замість
-Postgres. Виправ (Admin → Workflows → Checkpointer).
+**"`kill -9` pod'а → workflow lost"** → CodeMie backend на in-memory
+DB замість Postgres. Deployment issue — tenant UI це не fix'ить.
+Перевір SRE: `CheckpointSaver` має bind до Postgres connection pool.
 
 **"Resume webhook повертає 404"** → thread_id у URL неправильний.
 Візьми з Executions → копіюй повний execution_id, не workflow_id.
@@ -149,7 +160,7 @@ Admin → Tools → `check_idempotency` → test call.
 
 1. **Phase 1 (ризик 0):** Deploy workflow паралельно, A/B test на 5% traffic.
 2. **Phase 2:** Миграція existing W2 sessions — експортуй їхні state,
-   імпортуй у Postgres checkpointer як resumable executions.
+   імпортуй як resumable executions (checkpoint rows у Postgres).
 3. **Phase 3:** W2 deprecated, усі нові заявки через W3 workflow.
 
 CodeMie підтримує паралельні workflow versions, legacy W2 flow може

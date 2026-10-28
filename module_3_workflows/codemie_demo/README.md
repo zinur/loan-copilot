@@ -74,7 +74,8 @@ Legend:
       `verify-before-send-agent`, `compensation-agent`
 - [ ] 6 нових W3 tools: `ocr.extract`, `contract.draft`, `limit.reserve`,
       `limit.release`, `contract.cancel`, `notify.send`
-- [ ] **Postgres checkpointer** (не Memory) у Admin → Workflows → Checkpointer
+- [ ] CodeMie backend на Postgres (checkpointer автоматично persistent;
+      hardcoded у `CheckpointSaver` class — no tenant UI toggle)
 - [ ] Workflow `loan-copilot-durable-w3` deployed з YAML
 - [ ] 3 webhook endpoints: `docs.uploaded`, `offer.decision`, `contract.signed`
 - [ ] Workflow timeouts: docs 48h, analyst 2h, committee 24h, offer 7d, sign 7d

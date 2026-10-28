@@ -30,7 +30,9 @@
 #        contract-draft-agent  (template → text)
 #        verify-before-send-agent (pre-write evaluator)
 #        compensation-agent    (Saga rollback)
-#   3. CodeMie checkpointer: Postgres або SQLite (у UI: Admin → Workflows → Checkpointer)
+#   3. CodeMie checkpointer: hardcoded Postgres via CheckpointSaver class
+#      (src/codemie/workflows/checkpoint_saver.py) — no tenant UI toggle,
+#      persistence tied to CodeMie backend DB.
 #   4. Webhook endpoints зареєстровані у Admin → Integrations → Webhooks:
 #        docs.uploaded, offer.decision, contract.signed
 # ----------------------------------------------------------------------------
@@ -412,8 +414,9 @@ enable_summarization_node: false
 
 # Durable Waits support — CodeMie сам використовує Postgres checkpointer
 # при `interrupt_before: true`. Для production:
-#   Admin → Workflows → Checkpointer → Postgres (НЕ Memory).
-# Memory checkpointer втрачає state при restart'і pod'ів. Для demo — OK.
+# CheckpointSaver class — Postgres-backed via WorkflowExecutionCheckpoint
+# data model. NO tenant UI toggle; persistence tied to CodeMie backend DB
+# connection (SRE concern, not SA task).
 
 # ----------------------------------------------------------------------------
 # NOTES

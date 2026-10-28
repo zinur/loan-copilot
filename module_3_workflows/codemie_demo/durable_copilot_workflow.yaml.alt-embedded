@@ -631,10 +631,13 @@ recursion_limit: 50
 max_concurrency: 1
 enable_summarization_node: false
 
-# Durable Waits — CodeMie uses Postgres checkpointer when
-# `interrupt_before: true` is set. For production:
-#   Admin → Workflows → Checkpointer → Postgres (NOT Memory).
-# Memory checkpointer loses state on pod restart. For demo — OK.
+# Durable Waits — CodeMie uses its built-in CheckpointSaver (Postgres-
+# backed, hardcoded in src/codemie/workflows/checkpoint_saver.py) when
+# `interrupt_before: true` is set. There is NO Admin UI toggle to pick
+# Memory vs Postgres — persistence is deployment-level (CodeMie backend
+# DB connection). If the tenant backend is Postgres, interrupts survive
+# `kill -9`; if someone deploys CodeMie with in-memory DB, nothing in
+# the tenant UI can fix it — SRE concern, not SA task.
 
 # ----------------------------------------------------------------------------
 # NOTES
