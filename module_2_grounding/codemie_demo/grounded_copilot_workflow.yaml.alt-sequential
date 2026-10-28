@@ -116,11 +116,10 @@ states:
       Якщо факту немає у документах — refusal, НЕ ВИГАДУВАТИ політику.
 
       === OUTPUT ENCODING (КРИТИЧНО) ===
-      JSON повертай з RAW UTF-8 Cyrillic символами, НЕ ескейп.
+      JSON повертай у raw UTF-8 (ensure_ascii=False). Усі non-ASCII
+      символи — літерали, НЕ \uXXXX escape sequences.
       ПРАВИЛЬНО: {"reason": "Клієнт відповідає базовим критеріям"}
-      НЕПРАВИЛЬНО: {"reason": "Клієнт..."}
-      Set json.dumps(ensure_ascii=False) equivalent — пиши literal
-      Cyrillic chars у output string, не Unicode escape sequences.
+      НЕПРАВИЛЬНО: {"reason": "Кл..."}
     output_schema: |
       {
         "type": "object",

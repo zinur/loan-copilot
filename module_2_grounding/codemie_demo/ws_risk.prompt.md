@@ -106,9 +106,10 @@ Sanctions block:
 }
 ```
 
-**ВАЖЛИВО:** пиши Cyrillic символи напряму у JSON (UTF-8), НЕ ескейп у
-`\uXXXX`. `message`, `reason`, та інші text-поля мають бути читабельні
-у CodeMie Workflow Execution UI, не encoded.
+**ВАЖЛИВО (UTF-8):** серіалізуй JSON з `ensure_ascii=false`. Усі
+non-ASCII символи (Cyrillic, emoji, акценти) — літералами, НЕ `\uXXXX`
+escape sequences. `message`, `reason`, та інші text-поля мають бути
+читабельні у CodeMie Workflow Execution UI, не encoded.
 
 ## Temperature
 

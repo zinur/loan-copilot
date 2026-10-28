@@ -92,9 +92,10 @@
 - `citations` — завжди список, навіть з одним елементом.
 - `reason` — одне речення, людська мова, без internal IDs окрім § посилань.
 - Якщо `escalate_to_human=true` — `citations` може бути порожнім списком.
-- **ВАЖЛИВО:** пиши Cyrillic символи напряму у JSON (UTF-8 encoding, `ensure_ascii=false`).
-  НЕ ескейп у `\uXXXX` sequences — reason та citations мають бути read-friendly
-  у CodeMie Workflow Execution UI, а не encoded JSON escape.
+- **ВАЖЛИВО (UTF-8):** серіалізуй JSON з `ensure_ascii=false`. Усі
+  non-ASCII символи (Cyrillic, emoji, акценти) — літералами, НЕ `\uXXXX`
+  escape sequences. Reason та citations мають бути read-friendly у
+  CodeMie Workflow Execution UI, не encoded.
 
 ## Temperature
 
