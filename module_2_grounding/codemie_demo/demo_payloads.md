@@ -17,13 +17,23 @@
 > UI/бекендом з recorded timestamp + signature.
 
 **Очікуване:**
-- Intake → всі 8 полів зібрані.
-- Eligibility RAG → cite `[POL-LOAN-01 §2.1]` (базові критерії ОК) + `[SOP-CREDIT-02 §4.2]` (ліміти ОК).
-- Consent Gate → **PAUSE** (interrupt_before). Клієнт підтверджує → отримує `consent_id=consent-2026-...`.
-- KYC → clean.
-- Credit History → score 720 (mock).
-- Risk Score → band A, PTI ~0.21, suggested_rate 18.5.
-- Underwriter → `decision=approve, rate_apr=18.5` з цитатою `[SOP-CREDIT-02 §5]`.
+- Intake → всі 8 полів зібрані, intake_complete=true.
+- Eligibility RAG → `eligible=true`, cite `[POL-LOAN-01 sec.2.1]` + `[SOP-CREDIT-02 sec.4.2]`.
+- KYC → `kyc_passed=true, sanctions=false` (lookup для 1234567890).
+- Consent Gate → **demo verifier** (НЕ real pause): LLM знаходить "Згоден на запит УБКІ"
+  у initial message, генерує `consent_id=consent-1234567890-demo`. Workflow проходить
+  непреривно, без зовнішнього pause/resume.
+- Credit History → `credit_score=720` (lookup для 1234567890).
+- Risk Score → `risk_band=A` (720 ≥ 700), `pti~0.21`, `rate_apr=15.9`.
+- Underwriter → **plain Ukrainian narrative** (no JSON): "Доброго дня, Маріє! Ваша
+  заявка СХВАЛЕНА..." з citation `[SOP-CREDIT-02 sec.5]`.
+
+> **Про Consent Gate у W2:** це **demo verifier** (не справжній HITL). Workflow
+> не паузиться — LLM парсить initial payload на keywords ("згоден", "згодна",
+> "I agree", "дозволяю УБКІ") і або генерує `consent_id`, або термінує gate.
+> **Справжній durable HITL** (physical pause → Postgres checkpoint → resume
+> через webhook API) → **W3** workflow, 5 interrupt points (docs_awaiting,
+> analyst, committee, offer, sign).
 
 ---
 
