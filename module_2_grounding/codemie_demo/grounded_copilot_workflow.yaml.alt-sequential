@@ -9,6 +9,14 @@
 # потрібен deterministic routing (NBU audit, dual-control на consent).
 #
 # Deploy: Workflows → + Create Workflow → YAML view → paste → Save.
+#
+# ⚠️ ВАЖЛИВО · UNICODE / UTF-8 У JSON OUTPUT:
+# CodeMie Workflow Execution UI показує Cyrillic як \uXXXX escape sequences,
+# якщо LLM серіалізує JSON з ensure_ascii=true (OpenAI default behavior).
+# Fix: кожен assistant system prompt має явну інструкцію "писати Cyrillic
+# напряму у UTF-8, НЕ escape у \uXXXX". Якщо бачиш escaped output —
+# онови system prompt відповідного assistant'а (ws_eligibility.prompt.md,
+# ws_risk.prompt.md) та re-save у CodeMie UI.
 # ─────────────────────────────────────────────────────────────────────
 
 # CodeMie Workflow · Loan Copilot W2 — Grounded (RAG + Tools + Gateway)

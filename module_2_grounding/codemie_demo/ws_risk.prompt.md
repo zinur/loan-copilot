@@ -106,6 +106,10 @@ Sanctions block:
 }
 ```
 
+**ВАЖЛИВО:** пиши Cyrillic символи напряму у JSON (UTF-8), НЕ ескейп у
+`\uXXXX`. `message`, `reason`, та інші text-поля мають бути читабельні
+у CodeMie Workflow Execution UI, не encoded.
+
 ## Temperature
 
 **0.0** — tool-calling + numeric reasoning. Жодної креативності.
