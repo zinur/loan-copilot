@@ -10,7 +10,24 @@
 - CodeMie backend на Postgres (checkpointer автоматично persistent).
 - Admin → Workflows → Executions tab відкрита (для показу pause/resume).
 
-## CodeMie Workflow API (verified from source)
+## Два шляхи resume paused state
+
+### Варіант UI (primary для live demo)
+
+Коли workflow паузиться на `interrupt_before: true` state, у Workflow
+Execution view з'являються 3 кнопки: **Abort / Edit / Continue**.
+
+**Flow:**
+1. **Edit** → відкриває JSON editor для output paused state.
+2. Paste очікуваний output (симулює webhook payload) → Save.
+3. **Continue** → workflow застосує цей output як "те що state видав би"
+   та перейде до наступного.
+
+Цей шлях виглядає інтуїтивно і НЕ потребує curl / terminal / auth
+tokens — ідеально для живого демо перед залом SA. Під капотом UI
+викликає ті самі `PUT /output` + `PUT /resume` endpoints.
+
+### Варіант curl / webhook (для production integration)
 
 Base path: `/api/v1/workflows/{workflow_id}/executions`
 
@@ -42,190 +59,219 @@ export EXEC_ID="<copy-from-Executions-tab-after-start>"
 
 ---
 
-## 1. Happy path · survive kill -9 · ~5 хв
+## 1. Happy path · 4 HITL resumes · ~5 хв
 
-### 1a. Start execution (POST)
+### 1a. Start execution — UI (primary для demo)
+
+У CodeMie → Workflows → `loan-copilot-durable-w3-embedded`:
+
+1. Клікни **Run workflow** (НЕ Run Chat — chat mode міняє поведінку).
+2. У text area paste client payload:
+   ```
+   Марія Коваленко, 1234567890, +380501234567, maria@example.com,
+   дохід 35000, сума 80000, строк 24 міс, consumer purpose.
+   Веду ФОП 8 місяців.
+   ```
+3. Клікни Submit → workflow стартує.
+
+**Flow:** intake-state ✅ → **PAUSE** before `docs-requested-state`.
+
+> **Що UI показує:** sidebar list completed states (`intake-state ✅`), а
+> поточний (paused) state підсвічений + overall status `Interrupted`.
+> Внизу три кнопки: **Abort / Edit / Continue**.
+
+### 1b. Resume #1 — docs uploaded (UI)
+
+1. Клікни **Edit** → відкриється JSON editor.
+2. Paste output для `docs-requested-state`:
+   ```json
+   {
+     "docs_uploaded": true,
+     "doc_urls": ["s3://pb/intake/passport.pdf", "s3://pb/intake/income_cert.pdf"]
+   }
+   ```
+3. Save → клікни **Continue**.
+
+**Flow continues:** docs-processing (OCR 0.92) → kyc → **PAUSE** before
+`consent-awaiting-state`.
+
+### 1c. Resume #2 — client consent via Дія.Підпис (UI) ⭐ W3-specific
+
+1. **Edit** → paste output для `consent-awaiting-state`:
+   ```json
+   {
+     "consent_id": "consent-1234567890-diia-20261028",
+     "consent_given": true
+   }
+   ```
+2. Save → **Continue**.
+
+**Flow:** credit-history (score 720) → underwriter (band A, rate 15.9%)
+→ contract-draft → verify-before-send → **PAUSE** before `offer-state`.
+
+> **Pedagogical point (що говориш залу):** "Це справжній durable HITL —
+> не sync verifier як у W2. Клієнт може підписувати consent годинами,
+> workflow state збережений у Postgres, виживає `kill -9` pod'а. Resume
+> коли завгодно, context не губиться."
+
+### 1d. Resume #3 — client accepts offer (UI)
+
+1. **Edit** → paste output для `offer-state`:
+   ```json
+   {"client_decision": "accept"}
+   ```
+2. Save → **Continue**.
+
+**Flow:** → **PAUSE** before `sign-awaiting-state`.
+
+### 1e. Resume #4 — contract signed via Дія (UI)
+
+1. **Edit** → paste output для `sign-awaiting-state`:
+   ```json
+   {
+     "disbursed": true,
+     "disburse_id": "DISB-20261028-001",
+     "event_key": "sha256-abc123def456",
+     "was_duplicate": false
+   }
+   ```
+2. Save → **Continue**.
+
+→ workflow ends: `overall_status=completed`, `disbursed=true`.
+
+**Що показуємо залу:** workflow пройшов 4 durable waits (docs, consent,
+offer, sign), кожен можна паузити на години/дні, state збережений між
+pod restarts. Нуль втрачених заявок.
+
+### 1f. (Optional) Equivalent curl — для production integration
+
+Якщо залу цікаво як це автоматизувати через webhooks замість UI
+кліків:
 
 ```bash
-curl -X POST \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions" \
+# Start (same user_input)
+curl -X POST "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions" \
   -H "Authorization: Bearer $CODEMIE_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "user_input": "Марія Коваленко, 1234567890, +380501234567, maria@example.com, дохід 35000, сума 80000, строк 24 міс, consumer. Веду ФОП 8 місяців. Згоден на запит УБКІ.",
-    "stream": false
-  }'
+  -d '{"user_input": "Марія Коваленко, ..., Веду ФОП 8 місяців.", "stream": false}'
+
+# Save execution_id from response → $EXEC_ID
+
+# Resume #1 — docs
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"state_id":"docs-requested-state","output":"{\"docs_uploaded\":true,\"doc_urls\":[\"s3://pb/d1.pdf\"]}"}'
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
+
+# Resume #2 — consent
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"state_id":"consent-awaiting-state","output":"{\"consent_id\":\"consent-1234567890-diia\",\"consent_given\":true}"}'
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
+
+# Resume #3 — offer
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"state_id":"offer-state","output":"{\"client_decision\":\"accept\"}"}'
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
+
+# Resume #4 — sign
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"state_id":"sign-awaiting-state","output":"{\"disbursed\":true,\"disburse_id\":\"DISB-001\",\"event_key\":\"sha256-abc\",\"was_duplicate\":false}"}'
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
 ```
 
-Response → `{execution_id, workflow_id, overall_status: "running", ...}`.
-**Копіюй `execution_id` у `$EXEC_ID`.**
+### 1g. (Optional) kill -9 survival test
 
-Workflow starts → intake → **PAUSE at `docs-requested-state`** (чекає webhook).
+Запусти scenario 1a → 1b → до pause на `consent-awaiting-state`. Тоді:
 
-### 1b. Simulate k8s restart
-
-У CodeMie Admin → Workflows → Executions → побачиш `$EXEC_ID` зі
-статусом `interrupted:docs-requested-state`.
-
-**Перезапусти worker pod:**
 ```bash
 kubectl delete pod -n codemie -l app=codemie-workflow-worker
 ```
 
-Через 10 секунд pod відновлюється. Executions tab показує той самий
-workflow у тому самому interrupted state. **State persistence через
-built-in Postgres checkpointer працює.**
-
-### 1c. Resume with "docs uploaded" webhook (TWO-STEP)
-
-Step 1 — set output of the paused state:
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "state_id": "docs-requested-state",
-    "output": "{\"docs_uploaded\": true, \"doc_urls\": [\"s3://pb/intake/doc1.pdf\", \"s3://pb/intake/doc2.pdf\"]}"
-  }'
-```
-
-Step 2 — resume execution:
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-**Flow продовжується:** docs-processing (OCR confidence 0.92) → kyc →
-credit-history → underwriter (band A) → contract-draft → verify
-(pass) → **PAUSE at `offer-state`**.
-
-### 1d. Resume з client acceptance (TWO-STEP)
-
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "state_id": "offer-state",
-    "output": "{\"client_decision\": \"accept\"}"
-  }'
-
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-→ **PAUSE at `sign-awaiting-state`**.
-
-### 1e. Resume з contract.signed webhook (TWO-STEP)
-
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "state_id": "sign-awaiting-state",
-    "output": "{\"disbursed\": true, \"disburse_id\": \"DISB-001\", \"event_key\": \"sha256-abc123\", \"was_duplicate\": false}"
-  }'
-
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -d '{}'
-```
-
-→ workflow ends: `overall_status=completed`, `disbursed=true`.
-
-**Що показуємо залу:** workflow прожив `kill -9` pod'а + 3 resume cycles.
-Нуль втрачених заявок.
+Через 10с pod відновиться. У Executions tab побачиш той самий
+execution, той самий paused state, той самий context. State persistence
+через built-in Postgres checkpointer працює. Продовжуй з Edit+Continue
+як ніби нічого не сталося.
 
 ---
 
 ## 2. Idempotent webhook replay · ~3 хв
 
-### Setup
+### Setup (UI)
 
-Повтори Scenario 1 до того, як дійшов до sign-awaiting-state.
-Workflow PAUSED at sign-awaiting (не роби resume ще).
+Повтори Scenario 1 через Edit+Continue до того, як дійшов до
+`sign-awaiting-state`. Workflow PAUSED там (НЕ натискай Continue).
 
-### First resume (normal)
+### First "webhook" via UI (normal)
 
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "state_id": "sign-awaiting-state",
-    "output": "{\"disbursed\": true, \"disburse_id\": \"DISB-001\", \"event_key\": \"sha256-abc123\", \"was_duplicate\": false}"
-  }'
+1. **Edit** → paste output:
+   ```json
+   {
+     "disbursed": true,
+     "disburse_id": "DISB-001",
+     "event_key": "sha256-abc123",
+     "was_duplicate": false
+   }
+   ```
+2. **Continue** → money disbursed. `overall_status=completed`.
 
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -d '{}'
-```
+### Replay same "webhook" (simulated Дія.Підпис retry)
 
-→ money disbursed. `overall_status=completed`.
+Спроба зробити **Continue** вдруге на вже completed execution.
 
-### Replay same webhook (simulated Дія.Підпис retry)
-
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -d '{}'
-```
-
-**Очікуване:** CodeMie повертає `409 Conflict` або `400 Bad Request`
-("execution not in interrupted state, cannot resume"). Workflow у
-`completed`, не `interrupted` — resume блокується на API level.
+**Очікуване:** UI показує error ("execution not in interrupted state,
+cannot resume"), або кнопки Edit/Continue disabled. Via API — `409
+Conflict` або `400 Bad Request`.
 
 **Жодного другого disburse** — ніяких 150 000 UAH × 2.
 
 **Що говориш:** "Два рівні захисту: (1) CodeMie workflow executor
 дозволяє resume ТІЛЬКИ якщо `overall_status=interrupted`. Після
-`completed` — API поверне помилку. (2) Якщо через bug workflow би
-знову дійшов до sign-awaiting-state, idempotency key у tool
-`check_idempotency(event_key)` повернув би cached result."
+`completed` — API/UI блокує повторний resume. (2) Якщо через bug
+workflow би знову дійшов до sign-awaiting-state, idempotency key у
+tool `check_idempotency(event_key)` повернув би cached result."
+
+### Equivalent via curl
+
+```bash
+# First resume — success
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"state_id":"sign-awaiting-state","output":"{\"disbursed\":true,\"disburse_id\":\"DISB-001\",\"event_key\":\"sha256-abc\",\"was_duplicate\":false}"}'
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
+
+# Replay — 409/400 Conflict
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
+```
 
 ---
 
 ## 3. Saga rollback · client cancellation · ~4 хв
 
-### Setup
+### Setup (UI)
 
-Запусти Scenario 1 до offer-state (contract reserved, limit заблоковано).
+Запусти Scenario 1 через Edit+Continue до pause на `offer-state`
+(contract reserved, limit заблоковано у contract-draft-state).
 
-### Client rejects offer (TWO-STEP)
+### Client rejects offer (UI)
 
-```bash
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "state_id": "offer-state",
-    "output": "{\"client_decision\": \"reject\"}"
-  }'
-
-curl -X PUT \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -d '{}'
-```
+1. **Edit** → paste output для `offer-state`:
+   ```json
+   {"client_decision": "reject"}
+   ```
+2. **Continue**.
 
 **Workflow transitions:** offer-state → `compensation-state`.
 
-**У compensation-state видно (Executions → view execution → state transitions):**
+**У compensation-state видно (sidebar → клік на state → Result):**
 1. `limit.release(contract_id=LC-...)` → status: ok.
 2. `contract.cancel(contract_id=LC-...)` → status: ok.
 3. `notify.sms(tax_id=1234567890, text="Заявку скасовано, резерв знято.")`.
@@ -236,38 +282,47 @@ curl -X PUT \
 договір, SMS) має парну rollback action. 2-Phase Commit тут не
 працює — XA не існує для SMS gateway."
 
+### Equivalent via curl
+```bash
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/output" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"state_id":"offer-state","output":"{\"client_decision\":\"reject\"}"}'
+curl -X PUT "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions/$EXEC_ID/resume" \
+  -H "Authorization: Bearer $CODEMIE_TOKEN" -d '{}'
+```
+
 ---
 
 ## 4. Pre-write gate fail · verify blocks bad contract · ~3 хв
 
-### Setup
+### Setup — simulate contract-draft bug via UI Edit
 
-Happy-path дані, але **штучно підкрутимо** `contract-draft-agent`
-system prompt, щоб повернув wrong rate_apr для `tax_id=1234567890`:
+**Трюк для демо:** замість того щоб міняти contract-draft prompt і
+rerun'ити, можна напряму **Edit** вихід `contract-draft-state` з
+неправильним `rate_apr`.
 
-У CodeMie Workflow YAML → `contract` assistant → system_prompt → додай
-на початок:
+1. Запусти Scenario 1 через Edit+Continue до того, як **автоматично**
+   пройдуть states: docs-processing, kyc, consent, credit-history,
+   underwriter (`rate_apr=18.5`).
+2. Workflow дійде до `contract-draft-state` (БЕЗ interrupt_before, тому
+   не паузиться автоматично — виконається з correct rate 18.5%).
+3. Workflow потрапить у pause перед `verify-before-send-state`? Ні —
+   verify теж без interrupt_before.
+
+**Простіший спосіб:** додай тимчасово `interrupt_before: true` на
+`contract-draft-state` у YAML → Save → rerun → paused перед
+contract-draft → **Edit** → paste "bugged" output:
+
+```json
+{
+  "contract_id": "LC-20261028-001",
+  "contract_text_url": "s3://pb/contracts/LC-20261028-001.pdf",
+  "limit_reserved": true,
+  "rate_apr": 22.0
+}
 ```
-DEBUG MODE: for tax_id=1234567890 override rate_apr=22.0 (bug simulation).
-```
-Save → rerun scenario.
 
-### Run
-
-```bash
-curl -X POST \
-  "$CODEMIE_HOST/api/v1/workflows/$WF_ID/executions" \
-  -H "Authorization: Bearer $CODEMIE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_input": "Марія Коваленко, 1234567890, ..., сума 80000...",
-    "stream": false
-  }'
-```
-
-Flow: intake → eligibility → kyc → credit → underwriter (`rate_apr=18.5`)
-→ docs-upload (resume as in #1) → OCR → contract-draft (**поверне 22.0, bug**)
-→ **verify-before-send FAIL**:
+→ **Continue** → workflow робить verify-before-send:
 
 ```json
 {
@@ -289,7 +344,8 @@ contract renderer вивів 22% (bug). Клієнт **ніколи не отр�
 LLM output та final artifact. Engineering fix bug, клієнт — SMS
 'технічна затримка, скоро повернемось'."
 
-**Cleanup:** приберіть DEBUG MODE override з contract system_prompt.
+**Cleanup:** прибери тимчасовий `interrupt_before: true` з
+`contract-draft-state` у YAML після сценарію.
 
 ---
 
