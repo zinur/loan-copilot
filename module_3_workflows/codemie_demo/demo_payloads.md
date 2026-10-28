@@ -6,6 +6,29 @@ Workflow `loan-copilot-durable-w3-embedded` має **6 HITL state'ів з
 вони resume'яться через real webhook / message queue event. У demo —
 через UI **Edit + Continue** (той самий effect як webhook payload).
 
+## ⚠ CodeMie UI quirk про `interrupt_before`
+
+**Факт:** workflow паузиться НА `webhook_*` state (саме його output
+встановлює Edit).
+
+**Але UI показує:** попередній completed state highlighted з Interrupted
+badge. Наступний (paused) `webhook_*` state ще не з'являється у sidebar —
+він там з'явиться тільки ПІСЛЯ Edit+Continue.
+
+**Як орієнтуватися:**
+- Sidebar highlight = **last completed** state (misleading).
+- Центральна панель **Input prompt** = показує що буде виконано далі.
+  Якщо там текст на кшталт *"Pause workflow until client provides
+  explicit UBKI consent..."* — ти знаєш, що paused state це
+  `webhook_consent_granted`.
+- Edit → paste output у форматі `webhook_consent_granted`'s output_schema.
+- Continue → workflow застосовує твій output + продовжує.
+
+**Чому так:** CodeMie/LangGraph `interrupt_before` = "pause BEFORE
+state runs". State ще не виконувався, тому його немає у completed
+sidebar. Коли Edit+Continue — state logically "runs" з output з Edit,
+потім з'являється у sidebar.
+
 **Start input (той самий для обох сценаріїв):**
 
 ```
