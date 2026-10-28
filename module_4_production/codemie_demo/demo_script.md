@@ -50,24 +50,31 @@ Scroll через 20 cases:
 > додати як нові cases? Наприклад, якщо у проді випав hallucination на
 > ФОП — додаємо такий case у Golden Set, щоб ніколи не повторилось."
 
-### Клік: Workflows → `loan-copilot-eval-w4` → YAML view
+### Клік: Workflows → `loan-copilot-eval-w4-embedded` → YAML view
 
 Scroll через states, акцент на:
 
 1. **load-golden-set** → **execute-case** (iter_key: cases).
-   > "20 cases у parallel, max_concurrency 5. Загалом eval займає ~5 хв."
+   > "20 cases у parallel, max_concurrency 5. Загалом eval займає ~5 хв.
+   > `execute-case` state використовує native `workflow_id` поле — тригерить
+   > W3 prod workflow як sub-workflow через CodeMie SubWorkflowNode. Жодного
+   > custom tool не потрібно."
 
 2. **judge-case** → scores 5-dim rubric.
-   > "LLM-as-Judge — Anthropic Claude 3.5 Sonnet. Prod workflow — Azure
-   > GPT-4.1. Different family → self-enhancement bias prevented."
+   > "LLM-as-Judge — у production Anthropic Claude 3.5 Sonnet (DIAL
+   > multi-provider). Prod workflow — Azure GPT-4.1. Different family
+   > → self-enhancement bias prevented. Для workshop demo обидва на
+   > одному provider — flag у reasoning output."
 
 3. **ragas-case** → math-based metrics.
    > "RAGAS — не LLM reasoning, це математичні формули. Faithfulness =
-   > |verified claims| / |total claims|. Deterministic, calibrated."
+   > |verified claims| / |total claims|. Для production потрібен RAGAS
+   > Python library через MCP tool. Для demo — LLM approximates."
 
 4. **bias-detect** → для adversarial cases.
-   > "PII leak + prompt injection detection. Deterministic (regex Luhn
-   > + patterns), НЕ LLM — щоб detectors не галюцинували."
+   > "PII leak + prompt injection detection. Deterministic reasoning
+   > (regex Luhn + patterns). Для production — real MCP tools
+   > `detect_pii_leak` + `detect_injection_success`."
 
 5. **aggregate-results** → CI gate decision.
    > "Pass/Blocked binary. 7 criteria усі має бути true. Якщо хоч один
@@ -79,9 +86,9 @@ Scroll через states, акцент на:
 
 ### 3:00–4:00 · Trigger
 
-**Клік:** Workflows → `loan-copilot-eval-w4` → **Start Execution** → payload:
-```json
-{"golden_set_version": "v1", "triggered_by": "demo-live"}
+**Клік:** Workflows → `loan-copilot-eval-w4-embedded` → **Run workflow** → user_input:
+```
+demo-live-2026-10-28
 ```
 
 ### 4:00–7:00 · Watch live progress
@@ -238,7 +245,9 @@ expected_decision`.
 
 ## 13:00–15:00 · FinOps dashboard + Q&A
 
-**Клік:** Admin → Billing → Project `loan-copilot` → Usage dashboard.
+**Клік:** Admin → Projects → `loan-copilot` → Budget / Usage
+(CodeMie має project budgets у `budget_repository.py`; exact UI path
+може відрізнятися між tenant versions).
 
 **Графіки:**
 - **Cost per case (last 7 days):** avg $0.47 стабільно.
