@@ -1,33 +1,21 @@
 # W3 demo · Happy path + Rainy day
 
-Workflow `loan-copilot-durable-w3-embedded` має **6 HITL state'ів з
-префіксом `webhook_*`** — кожен симулює external service dependency
-(Privat24, Дія.Підпис, credit committee, SMS gateway). У production
-вони resume'яться через real webhook / message queue event. У demo —
-через UI **Edit + Continue** (той самий effect як webhook payload).
+Workflow `loan-copilot-durable-w3-embedded` emulates 6 external service
+dependencies via **send_*** → **webhook_*** state pairs:
 
-## ⚠ CodeMie UI quirk про `interrupt_before`
+| Trigger (send_*) | Durable wait (webhook_*) | External service |
+|---|---|---|
+| send_docs_request | webhook_docs_uploaded | Privat24 upload |
+| escalate_to_analyst | webhook_analyst_decision | Operator queue |
+| send_consent_request | webhook_consent_granted | Дія.Підпис consent |
+| escalate_to_committee | webhook_committee_decision | Credit committee |
+| send_offer | webhook_offer_decision | Client push |
+| send_contract_sign_request | webhook_contract_signed | Дія.Підпис sign |
 
-**Факт:** workflow паузиться НА `webhook_*` state (саме його output
-встановлює Edit).
-
-**Але UI показує:** попередній completed state highlighted з Interrupted
-badge. Наступний (paused) `webhook_*` state ще не з'являється у sidebar —
-він там з'явиться тільки ПІСЛЯ Edit+Continue.
-
-**Як орієнтуватися:**
-- Sidebar highlight = **last completed** state (misleading).
-- Центральна панель **Input prompt** = показує що буде виконано далі.
-  Якщо там текст на кшталт *"Pause workflow until client provides
-  explicit UBKI consent..."* — ти знаєш, що paused state це
-  `webhook_consent_granted`.
-- Edit → paste output у форматі `webhook_consent_granted`'s output_schema.
-- Continue → workflow застосовує твій output + продовжує.
-
-**Чому так:** CodeMie/LangGraph `interrupt_before` = "pause BEFORE
-state runs". State ще не виконувався, тому його немає у completed
-sidebar. Коли Edit+Continue — state logically "runs" з output з Edit,
-потім з'являється у sidebar.
+**Sidebar UX:** `send_*` state completes → sidebar shows it with ✅ +
+Interrupted overall badge → reads as "notification sent, waiting for
+response". Edit вводить output для **webhook_*** paused state (CodeMie
+UI quirk — див. нижче).
 
 **Start input (той самий для обох сценаріїв):**
 
@@ -42,19 +30,19 @@ sidebar. Коли Edit+Continue — state logically "runs" з output з Edit,
 ## Happy path (approved + disbursed) — 4 webhook resumes
 
 1. **Run workflow** → paste start input → Submit.
-2. Pause на `webhook_docs_uploaded`. Edit → Continue:
+2. Sidebar: `send_docs_request ✅` → PAUSE on `webhook_docs_uploaded`. Edit → Continue:
    ```json
    {"docs_uploaded": true, "doc_urls": ["s3://pb/d1.pdf", "s3://pb/d2.pdf"]}
    ```
-3. Pause на `webhook_consent_granted`. Edit → Continue:
+3. Sidebar: `send_consent_request ✅` → PAUSE on `webhook_consent_granted`. Edit → Continue:
    ```json
    {"consent_id": "consent-1234567890-diia", "consent_given": true}
    ```
-4. Pause на `webhook_offer_decision`. Edit → Continue:
+4. Sidebar: `send_offer ✅` → PAUSE on `webhook_offer_decision`. Edit → Continue:
    ```json
    {"client_decision": "accept"}
    ```
-5. Pause на `webhook_contract_signed`. Edit → Continue:
+5. Sidebar: `send_contract_sign_request ✅` → PAUSE on `webhook_contract_signed`. Edit → Continue:
    ```json
    {"disbursed": true, "disburse_id": "DISB-001", "event_key": "sha256-abc", "was_duplicate": false}
    ```
@@ -65,19 +53,19 @@ sidebar. Коли Edit+Continue — state logically "runs" з output з Edit,
 ## Rainy day (Saga rollback) — client rejects offer
 
 1. **Run workflow** → paste start input → Submit.
-2. Pause на `webhook_docs_uploaded`. Edit → Continue:
+2. PAUSE on `webhook_docs_uploaded`. Edit → Continue:
    ```json
    {"docs_uploaded": true, "doc_urls": ["s3://pb/d1.pdf"]}
    ```
-3. Pause на `webhook_consent_granted`. Edit → Continue:
+3. PAUSE on `webhook_consent_granted`. Edit → Continue:
    ```json
    {"consent_id": "consent-1234567890-diia", "consent_given": true}
    ```
-4. Pause на `webhook_offer_decision`. Edit → Continue з `reject`:
+4. PAUSE on `webhook_offer_decision`. Edit → Continue з **reject**:
    ```json
    {"client_decision": "reject"}
    ```
-5. Workflow transitions → `compensation-state` runs Saga:
+5. Workflow auto-transitions → `compensation-state` executes Saga:
    - `limit.release(contract_id)` ✅
    - `contract.cancel(contract_id)` ✅
    - `notify.sms` ✅
@@ -87,15 +75,15 @@ sidebar. Коли Edit+Continue — state logically "runs" з output з Edit,
 
 ## Optional detours
 
-**OCR failure branch** — додай `OCR_FAIL_DEMO` у start input → після
-docs upload буде додатковий pause на `webhook_analyst_decision`:
+**OCR failure branch** — додай `OCR_FAIL_DEMO` у start input →
+додатковий `escalate_to_analyst ✅` → PAUSE on `webhook_analyst_decision`:
 ```json
 {"analyst_approved": true, "analyst_notes": "manual OCR verified"}
 ```
 
-**Committee review branch** — зміни start input на client з low credit
-score (`tax_id=9876543210`, `сума=100000`) → після underwriter буде
-додатковий pause на `webhook_committee_decision`:
+**Committee review branch** — client з low credit score
+(`tax_id=9876543210, сума=100000`) → `escalate_to_committee ✅` → PAUSE
+on `webhook_committee_decision`:
 ```json
 {"committee_decision": "approve", "committee_notes": "approved with exception"}
 ```
@@ -103,6 +91,18 @@ score (`tax_id=9876543210`, `сума=100000`) → після underwriter буд
 **kill -9 survival** — під час будь-якого pause: `kubectl delete pod
 -n codemie -l app=codemie-workflow-worker`. Pod відновлюється, той
 самий paused state чекає. Continue нормально.
+
+---
+
+## ⚠ CodeMie UI quirk про `interrupt_before`
+
+Edit встановлює output для **paused webhook_*** state (verified у LangGraph
+source), а не для попереднього completed `send_*`. Sidebar показує
+`send_*` як last completed з overall Interrupted badge — це visual
+pointer, не місце де сидить execution.
+
+Якщо не впевнений який state paused — дивися центральний Input prompt
+panel, там видно який state наступним стартує.
 
 ---
 

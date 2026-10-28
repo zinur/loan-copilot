@@ -332,10 +332,31 @@ states:
     next:
       condition:
         expression: "intake_complete == True"
-        then: webhook_docs_uploaded
+        then: send_docs_request
         otherwise: end
 
-  # ──────────── 2. DOCS REQUESTED · DURABLE WAIT 24-48h ────────────
+  # ──────────── 1.5 SEND DOCS REQUEST · trigger external notification ────
+  - id: send_docs_request
+    assistant_id: intake
+    task: |
+      Record notification sent via Privat24 push: "Upload passport +
+      income cert". Return notification_id. Next state waits for
+      client's docs upload webhook.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "notification_id": {"type": "string"},
+          "channel":         {"type": "string"},
+          "sent":            {"type": "boolean"}
+        },
+        "required": ["sent"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: webhook_docs_uploaded
+
+  # ──────────── 2. DOCS UPLOADED · DURABLE WAIT 24-48h ──────────────
   - id: webhook_docs_uploaded
     assistant_id: intake
     task: |
@@ -392,9 +413,30 @@ states:
       condition:
         expression: "docs_valid == True and ocr_confidence >= 0.85"
         then: kyc-state
-        otherwise: webhook_analyst_decision
+        otherwise: escalate_to_analyst
 
-  # ──────────── 4. ANALYST REVIEW · CONDITIONAL HITL (OCR < 0.85) ────────────
+  # ──────────── 3.5 ESCALATE TO ANALYST · trigger external notification ──
+  - id: escalate_to_analyst
+    assistant_id: intake
+    task: |
+      Record escalation task sent to operator queue: "OCR confidence
+      below threshold, manual review required". Return task_id. Next
+      state waits for analyst decision webhook.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "task_id": {"type": "string"},
+          "queue":   {"type": "string"},
+          "sent":    {"type": "boolean"}
+        },
+        "required": ["sent"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: webhook_analyst_decision
+
+  # ──────────── 4. ANALYST DECISION · CONDITIONAL HITL (OCR < 0.85) ──────
   - id: webhook_analyst_decision
     assistant_id: docs
     task: |
@@ -434,10 +476,31 @@ states:
     next:
       condition:
         expression: "kyc_passed == True"
-        then: webhook_consent_granted
+        then: send_consent_request
         otherwise: end
 
-  # ──────────── 5.5 CONSENT · DURABLE HITL (W3-specific) ────────────
+  # ──────────── 5.5 SEND CONSENT REQUEST · trigger external notification ──
+  - id: send_consent_request
+    assistant_id: intake
+    task: |
+      Record consent request sent to Diia.Signature flow for
+      tax_id={{tax_id}}. Return request_id. Next state waits for
+      client's consent webhook.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "request_id": {"type": "string"},
+          "channel":    {"type": "string"},
+          "sent":       {"type": "boolean"}
+        },
+        "required": ["sent"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: webhook_consent_granted
+
+  # ──────────── 6. CONSENT GRANTED · DURABLE HITL (W3-specific) ──────────
   # Відмінність від W2: тут consent — справжній durable pause (чекає
   # Дія.Підпис-подібного signed consent від клієнта), а не sync verifier.
   # Workflow паузиться до webhook `consent.granted` з consent_id.
@@ -518,10 +581,31 @@ states:
           - condition: "decision == 'approve'"
             state_id: contract-draft-state
           - condition: "decision == 'committee_review'"
-            state_id: webhook_committee_decision
+            state_id: escalate_to_committee
         default: end
 
-  # ──────────── 8. COMMITTEE REVIEW · CONDITIONAL HITL (grey zone C) ────────────
+  # ──────────── 8.5 ESCALATE TO COMMITTEE · trigger external notification ──
+  - id: escalate_to_committee
+    assistant_id: intake
+    task: |
+      Record escalation task sent to credit committee queue: "Risk
+      band C (grey zone), human review required". Return ticket_id.
+      Next state waits for committee decision webhook.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "ticket_id": {"type": "string"},
+          "queue":     {"type": "string"},
+          "sent":      {"type": "boolean"}
+        },
+        "required": ["sent"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: webhook_committee_decision
+
+  # ──────────── 9. COMMITTEE DECISION · CONDITIONAL HITL (grey zone C) ───
   - id: webhook_committee_decision
     assistant_id: underwriter
     task: |
@@ -591,10 +675,32 @@ states:
     next:
       condition:
         expression: "verify_passed == True"
-        then: webhook_offer_decision
+        then: send_offer
         otherwise: compensation-state
 
-  # ──────────── 11. OFFER · DURABLE WAIT 7d ────────────
+  # ──────────── 11.5 SEND OFFER · trigger external notification ─────────
+  - id: send_offer
+    assistant_id: intake
+    task: |
+      Record personal offer sent to client via Privat24 push:
+      amount={{amount}}, term={{term_months}} months,
+      rate={{rate_apr}}%, PTI={{pti}}. Return notification_id.
+      Next state waits for client's accept/reject webhook.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "notification_id": {"type": "string"},
+          "channel":         {"type": "string"},
+          "sent":            {"type": "boolean"}
+        },
+        "required": ["sent"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: webhook_offer_decision
+
+  # ──────────── 12. OFFER DECISION · DURABLE WAIT 7d ────────────────────
   - id: webhook_offer_decision
     assistant_id: intake
     task: |
@@ -616,10 +722,31 @@ states:
     next:
       condition:
         expression: "client_decision == 'accept'"
-        then: webhook_contract_signed
+        then: send_contract_sign_request
         otherwise: compensation-state
 
-  # ──────────── 12. SIGN AWAITING · DURABLE WAIT + IDEMPOTENCY ────────────
+  # ──────────── 12.5 SEND CONTRACT SIGN REQUEST · trigger external ──────
+  - id: send_contract_sign_request
+    assistant_id: intake
+    task: |
+      Record signing request sent to Diia.Signature for
+      contract_id={{contract_id}}. Return signature_request_id.
+      Next state waits for contract.signed webhook.
+    output_schema: |
+      {
+        "type": "object",
+        "properties": {
+          "signature_request_id": {"type": "string"},
+          "channel":              {"type": "string"},
+          "sent":                 {"type": "boolean"}
+        },
+        "required": ["sent"]
+      }
+    resolve_dynamic_values_in_prompt: true
+    next:
+      state_id: webhook_contract_signed
+
+  # ──────────── 13. CONTRACT SIGNED · DURABLE WAIT + IDEMPOTENCY ────────
   - id: webhook_contract_signed
     assistant_id: contract
     task: |
