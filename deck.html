@@ -2646,33 +2646,27 @@ SLIDES.push({ title:"Vector Storage & DLS", html:`
   </div>
   ${gloss([["HNSW","Hierarchical Navigable Small World (графовий індекс швидкого векторного пошуку)"],["DLS","Document-Level Security (розмежування прав на рівні окремих документів)"],["ACID","Atomicity, Consistency, Isolation, Durability"],["RBAC","Role-Based Access Control"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 8–10 хвилин. Слайд поєднує вибір фізичної інфраструктури векторів та фундаментальну вимогу банківської безпеки — Document-Level Security.</p>
+    <p><b>Timing:</b> 7–8 хв. Два незалежні рішення на одному слайді: (1) яку vector DB взяти, (2) як прошити DLS всередину retrieval.</p>
 
-    <p><b>Підводка для фасилітатора (Як ввести тему в аудиторію):</b><br>
-    <i>«Колеги, в інтернеті у 99% статей про RAG показують ідилічну картину: завантажили всі PDF-файли в одну базу, зробили пошук і все працює. Але в реальному банку так робити категорично заборонено. Чому? Тому що в банку один і той самий Loan Copilot обслуговує кардинально різні ролі: зовнішнього позичальника в Privat24, оператора у відділенні та кредитного андеррайтера в бек-офісі. У банку діє банківська таємниця (Ст. 60 ЗУ "Про банки") та різні грифи секретності: публічні оферти, внутрішні регламенти ДСК та закриті математичні формули ризик-моделей. Якщо ми кинемо їх в один спільний векторний простір без вбудованого контролю доступу (Document-Level Security) — ми або злитимо комерційну таємницю назовні, або повністю поламаємо видачу пошуку. Давайте розберемо, як це влаштовано на рівні топології сховищ та векторних індексів».</i></p>
+    <p><b>Framing (чому обидві теми разом):</b> один copilot обслуговує різні ролі (клієнт у Privat24, оператор, андеррайтер). Якщо кинути всі PDF-файли в одну базу без контролю доступу — або leak ДСК у клієнта, або retrieval мовчки повертає порожнє. Фізична база (pgvector/Qdrant) та правила видимості (DLS) — одне інженерне рішення, не два.</p>
 
-    <p><b>1. Що таке індекс HNSW і чому про нього запитує CISO:</b></p>
+    <h4 style="margin-top:0.8em">1. Vector storage — decision helper</h4>
     <ul>
-      <li><b>HNSW розшифровується як Hierarchical Navigable Small World</b> (Ієрархічний навігаційний тісний світ). Це графовий алгоритм, який лежить в основі pgvector, Qdrant, Milvus та OpenSearch.</li>
-      <li>Замість того, щоб порівнювати вектор клієнта з кожним із 2 мільйонів векторів бази (лінійний пошук O(N), який триває 500 мс і «вбиває» процесор), HNSW будує багатошаровий граф. Верхні шари роблять довгі експрес-стрибки через простір понять, а нижній шар (Layer 0) знаходить найближчих сусідів за <b>O(log N)</b> — всього за 2–4 мілісекунди!</li>
-      <li><b>Пам'ять:</b> Індекс HNSW живе в оперативній пам'яті (RAM). На 1 млн векторів потрібно ~2-3 GB RAM. Саме тому вибір бази напряму впливає на бюджет інфраструктури.</li>
+      <li><b>Default — pgvector.</b> Якщо у банку вже є Postgres (а він завжди є) + &lt;5M векторів + QPS &lt;100 — починаєте з pgvector. CISO approval — тиждень (не 3-6 міс для нової БД), ACID-транзакції разом з заявкою, backup/replication через стандартний DBA stack.</li>
+      <li><b>Міграція → OpenSearch</b> якщо Elastic вже deployed для логів: hybrid BM25 + k-NN з коробки, той самий operational stack.</li>
+      <li><b>Міграція → Qdrant/Milvus</b> тільки коли pgvector p95 search &gt; 100ms на реальному load (>20M векторів або >500 QPS). <b>Anti-pattern:</b> почати з Qdrant на PoC «бо modern» — потім 6 міс погоджень CISO.</li>
+      <li><b>HNSW (всі 3 опції його мають)</b> — графовий індекс у RAM, пошук O(log N). ~2-3 GB RAM на 1M векторів. CISO питає про це бо впливає на node sizing у K8s.</li>
     </ul>
 
-    <p><b>2. Чому pgvector перемагає на 80% банківських проектів:</b></p>
+    <h4 style="margin-top:0.8em">2. Document-Level Security — pre-filter vs post-filter</h4>
     <ul>
-      <li>Коли молода команда приходить до Chief Information Security Officer (CISO) банку і каже: <i>'Нам потрібна нова база Qdrant або ChromaDB у прод'</i> — процес погодження безпеки затягується на 3–6 місяців (перевірка вразливостей, образів Docker, шифрування дисків, бекапів).</li>
-      <li>Коли ви кажете: <i>'Ми вмикаємо розширення pgvector у нашому існуючому PostgreSQL кластері'</i> — погодження займає 1 тиждень, тому що PostgreSQL вже сертифікований, має реплікацію, налаштований моніторинг і команду чергових DBA о 3-й ночі.</li>
-      <li>Головний технічний плюс pgvector: <b>ACID-транзакційність</b>. Коли змінюється статус заявки або публікується нова версія кредитного тарифу, вектори оновлюються в тій самій транзакції, що й реляційні дані.</li>
+      <li><b>Post-filtering (anti-pattern):</b> спочатку pure vector search по всій базі → потім Python-бекенд фільтрує за роллю. Smelly ситуація: клієнт шукає "кредит без застави" — top-10 займає внутрішня інструкція ризиків (найповніша). Python бачить <code>allowed_roles=['underwriter']</code> → відкидає все → клієнт отримує <b>«нічого не знайдено»</b>, хоча публічна оферта лежала на 11-му місці. Це <b>Silent Empty Result Trap</b>.</li>
+      <li><b>In-index pre-filtering (correct):</b> role predicate йде всередину HNSW обходу: <code>WHERE allowed_roles && :user_roles AND effective_date &lt;= CURRENT_DATE</code>. Граф фізично не ступає у закриті гілки → завжди повертає релевантне для ролі. Pgvector/Qdrant/OpenSearch — усі підтримують filter inside index.</li>
+      <li><b>Регуляторика:</b> для Ст. 60 ЗУ «Про банки» + GDPR Art. 32 pre-filter — «технічний захист», post-filter — «software guarantee without proof». Різниця у документах для аудиту.</li>
+      <li><b>Smoke test на demo:</b> той самий query під клієнтом і андеррайтером → очікуй різні top-K. Golden set 50 queries × 3 ролі = 150 перевірок. Будь-який leak ДСК у клієнта → P0 incident.</li>
     </ul>
 
-    <p><b>3. Пастка Post-filtering (Класичний архітектурний дефект AI-проектів):</b></p>
-    <ul>
-      <li>Уявіть ситуацію: розробники вирішили зробити безпеку «просто в Python-коді» (Post-filtering). Вони роблять векторний пошук у базі за фразою клієнта: <i>«Які вимоги до кредиту без застави?»</i>.</li>
-      <li>Векторний ретрівер шукає Top-10 найближчих векторів по всій базі. Оскільки внутрішня детальна інструкція відділу ризиків містить найбільш повні й точні формулювання — вона займає <b>всі 10 місць у топі видачі</b>.</li>
-      <li>Далі спрацьовує Python-бекенд: дивиться на роль користувача (<code>role = 'retail_client'</code>) і бачить, що ці 10 документів мають гриф <code>allowed_roles = ['risk_underwriter']</code>. Бекенд відкидає всі 10 документів.</li>
-      <li><b>Результат:</b> клієнт на екрані Privat24 бачить відповідь: <i>«На жаль, інформації не знайдено»</i>! Хоча на 11-му місці в базі лежала відкрита публічна оферта. Це називається <b>Silent Empty Result Trap</b>.</li>
-      <li><b>Архітектурне рішення (In-Index Pre-filtering):</b> Права доступу та дата актуальності передаються як SQL-фільтр прямо всередину кроку навігації по HNSW-графу: <code>WHERE allowed_roles && :user_roles AND effective_date &lt;= CURRENT_DATE</code>. Алгоритм просто фізично не ступає у закриті для цього користувача гілки графа, а отже, гарантовано повертає релевантний публічний документ!</li>
-    </ul>`});
+    <p><b>Висновок залу:</b> «pgvector-first, in-index pre-filter — завжди. Не вибирайте Qdrant бо modern, не робіть RBAC у Python бо прості. Обидва anti-patterns — standard причини, чому AI-проекти в банках зриваються на security review або у production».</p>`});
 
 // --- Slide 13c: RAG Failure Triage ---
 SLIDES.push({ title:"RAG failure triage", html:`
@@ -3103,7 +3097,7 @@ SLIDES.push({ title:"Resilience & Saga", html:`
     <ul>
       <li><b>LLM-callable tool = financial exposure.</b> У класичному мікросервісі <code>transfer.execute()</code> викликається з явного Python-коду, якого ревʼю прочитав. У agentic flow — LLM "вирішує" викликати tool на основі reasoning. Це нова attack/bug surface: не 2PC проблема, а "модель галюцинувала виклик tool'а на approve з rate_apr з голови".</li>
       <li><b>Контракт Saga переноситься на tool-contract layer.</b> Кожен LLM-callable tool, який робить side-effect (reserve/draft/disburse/notify), <b>мусить</b> декларувати парний compensating tool. YAML-контракт tool'а — ось де архітектор AI системи додає цінність.</li>
-      <li><b>Idempotency key = первинний захист від "modelsвідомо надіслала webhook двічі".</b> Класична причина — мережа. Нова причина — workflow executor resumes після kill -9 pod'а на тому ж <code>interrupt_before</code> state, перевідправляє tool call. Composite key (tax_id::contract_id::event_id) захищає обидва випадки.</li>
+      <li><b>Idempotency key = первинний захист від подвійної дії.</b> Класична причина — мережевий retry провайдера. Нова причина у agentic flow — workflow executor resumes після kill -9 pod'а на тому ж <code>interrupt_before</code> state і перевідправляє tool call. Composite key (tax_id::contract_id::event_id) захищає обидва випадки.</li>
     </ul>
     <p><b>Висновок залу:</b> "AI не змінює Saga semantics. AI міняє <b>набір викликачів</b> — тепер tool може бути викликаний не з детермінованого Python, а з LLM reasoning. Compensating action + idempotency key стають обов'язковими на кожен tool-contract, не optional best practice."</p>`});
 
@@ -3657,7 +3651,7 @@ SLIDES.push({ title:"AI-specific hardening", html:`
 <p>Єдина найважливіша річ, яка відрізняє "demo агента" від "агент у банку": LLM формулює structured features, decision приймає Python-код з math + policy. Навіть якщо модель галюцинує "Схвалено 500k!" — Python бачить PTI 0.6 > threshold 0.5 → <code>decision=decline</code>. Air Canada case не стається бо LLM не має authority над rate_apr.</p>
 
 <p><b>3. Context Boundary:</b></p>
-<p>Текст з документів, email, OCR → у окреме поле <code>untrusted_payload</code>, не у system prompt. Workflow executor know які поля untrusted, LLM гет promptіт з явним розмежуванням. Indirect injection у PDF не має leverage бо агент знає "цей текст — не instructions".</p>
+<p>Текст з документів, email, OCR → у окреме поле <code>untrusted_payload</code>, не у system prompt. Workflow executor знає, які поля untrusted, та збирає LLM prompt з явним розмежуванням trusted/untrusted частин. Indirect injection у PDF не має leverage, бо агент знає "цей текст — дані для аналізу, не інструкції".</p>
 
 <p><b>4. Eval Gate у CI (new regulatory layer):</b></p>
 <p>Pre-LLM: тести перевіряють "does code compile + unit test pass". Post-LLM: Golden Set + LLM-judge + RAGAS metrics перевіряють "did behavior drift між model versions". CI blocks PR якщо faithfulness < 0.95. Це НОВИЙ layer poза unit tests — model behavior ≠ code logic, обидва треба gatекати.</p>
