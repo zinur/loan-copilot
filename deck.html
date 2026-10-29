@@ -3295,7 +3295,7 @@ SLIDES.push({ title:"W4 Agenda", html:`
           · <b>GenAI Observability:</b> OpenTelemetry semconv, trace_id, PII-санітизація<br>
           · <b>FinOps & Economics:</b> воронка 14k/день (PB consumer loans), Prompt Caching, $0.47/case<br>
           · <b>Adversarial Security:</b> Indirect PDF-ін'єкції, захист від витоку ваг скорингу<br>
-          · <b>Bank Hardening:</b> 7 обов'язкових стовпів для аудиту CISO банку
+          · <b>AI-specific hardening:</b> що AI додає понад традиційну banking security (prompt injection, deterministic gate, AI red-team)
           </p>
         </div>
       </div>
@@ -3321,8 +3321,8 @@ SLIDES.push({ title:"W4 Agenda", html:`
     <br>Розберемо архітектуру тестового пакету банку: 20 золотих пар запитань/відповідей, розрахунок метрик RAGAS (Faithfulness, Answer Relevance), аналіз трейсів у Langfuse та детальну модель FinOps-економіки.</li>
   <li><b>Частина 3 · Інтерактивна вправа: Оцінка відповідей моделей (25 хв):</b>
     <br>Разом проведемо сліпе рецензування 3 реальних відповідей мовних моделей на складний запит позичальника та з'ясуємо, чому лише одна з них відповідає вимогам комплаєнсу та банківської таємниці.</li>
-  <li><b>Частина 4 · Безпека та промислове гартування (Bank Hardening) (25 хв):</b>
-    <br>Пройдемося фінальним чеклістом CISO: управління секретами через Vault, мережеві файрволи для вихідного трафіку (Egress Whitelist) та план дій на випадок аварійних ситуацій (Incident Playbook).</li>
+  <li><b>Частина 4 · AI-specific hardening (25 хв):</b>
+    <br>Фокус на тому, що AI приносить нового понад стандартну banking security (яку ваш CISO знає краще): prompt injection у OCR-документах, deterministic decision gate (LLM не ухвалює фінальне рішення), model drift / eval gate у CI, AI red-team як окрема дисципліна поза традиційним pentest.</li>
 </ul>
 <p>Наприкінці вебінару ми підіб'ємо підсумки всього курсу та обговоримо наступні кроки впровадження у ваших продуктових командах.</p>
 `});
@@ -3634,40 +3634,52 @@ SLIDES.push({ title:"Adversarial Security", html:`
     </ul>`});
 
 
-// --- Slide 24: Bank hardening ---
-SLIDES.push({ title:"Bank hardening", html:`
+// --- Slide 24: AI-specific hardening (what AI brings new) ---
+SLIDES.push({ title:"AI-specific hardening", html:`
 <div class="slide">
-  <div class="slide-title">Bank hardening · <span class="accent">production-ready checklist</span></div>
-  <div class="slide-subtitle">Що банк вимагатиме перед go-live — незалежно від того, скільки раз ви показали PoC</div>
+  <div class="slide-title">AI-specific hardening · <span class="accent">що приносить AI понад традиційну banking security</span></div>
+  <div class="slide-subtitle">SSO · VPC · Vault · WAF · DPIA — ваші CISO/SRE знають це краще. Фокус слайду — те, що AI додає нового</div>
   <div class="content">
     <div class="grid-3" style="flex:1">
-      <div class="card c-std"><div class="card-tag">IDENTITY & ACCESS</div><div class="card-body" style="font-size:0.82em">SSO (SAML/OIDC) · RBAC per agent · service accounts · key rotation 90д · PIM для admin</div></div>
-      <div class="card c-std"><div class="card-tag">DATA</div><div class="card-body" style="font-size:0.82em">Private LLM endpoint (EU/UA) · at-rest encryption · PII masking на gateway · retention policy · export control</div></div>
-      <div class="card c-sp"><div class="card-tag">NETWORK</div><div class="card-body" style="font-size:0.82em">VPC + private endpoints · egress через banking proxy · WAF для chat UI · DDoS protection</div></div>
-      <div class="card c-sp"><div class="card-tag">PROMPT SECURITY</div><div class="card-body" style="font-size:0.82em">Input filters (injection patterns) · output refusal rules · signed system prompts · tool allowlist per role</div></div>
-      <div class="card c-gate"><div class="card-tag">AUDIT & COMPLIANCE</div><div class="card-body" style="font-size:0.82em">7-year audit log · immutable store · DPIA · AI Act Art. 26 logs · NBU reporting</div></div>
-      <div class="card c-gate"><div class="card-tag">INCIDENT RESPONSE</div><div class="card-body" style="font-size:0.82em">Kill switch per agent · rollback playbook · comms template · regulator notification SLA</div></div>
-      <div class="card c-out" style="grid-column:span 3"><div class="card-tag">RED-TEAM</div><div class="card-body" style="font-size:0.82em">Pre-launch: prompt injection · data exfiltration · PII leak · tool abuse · jailbreak via roleplay. Повторюйте щокварталу + при зміні моделі.</div></div>
+      <div class="card c-sp"><div class="card-tag">PROMPT SECURITY</div><div class="card-body" style="font-size:0.82em">Injection detection (indirect — у OCR тексті) · output refusal rules · signed system prompts · <b>tool allowlist per role</b> — tools це new attack surface, їх треба RBAC-ити</div></div>
+      <div class="card c-gate"><div class="card-tag">DETERMINISTIC GATE</div><div class="card-body" style="font-size:0.82em">LLM НЕ приймає фінальне рішення у вільному тексті. Модель → structured features → Python code → decision. "Схвалено!" у response ≠ approve якщо numbers fail</div></div>
+      <div class="card c-sp"><div class="card-tag">CONTEXT BOUNDARY</div><div class="card-body" style="font-size:0.82em">Текст з untrusted sources (OCR, email, uploaded docs) ізолюється у <code>untrusted_payload</code> field — не змішується з system prompt. Indirect injection не має leverage</div></div>
+      <div class="card c-std"><div class="card-tag">EVAL GATE (CI)</div><div class="card-body" style="font-size:0.82em">Golden Set (20+ cases) · LLM-as-Judge rubric · RAGAS metrics · <b>CI blocks PR</b> if faithfulness < 0.95 or decision_accuracy < 95%. Model drift → regression caught before prod</div></div>
+      <div class="card c-std"><div class="card-tag">LLM OBSERVABILITY</div><div class="card-body" style="font-size:0.82em">Trace tree (Langfuse) · model version per decision · token usage per request · tool_calls_made log. Для NBU audit: показуємо which model, which prompt, which chunks → which decision</div></div>
+      <div class="card c-gate"><div class="card-tag">AI ACT COMPLIANCE</div><div class="card-body" style="font-size:0.82em">Annex III §5(b) high-risk → human oversight on refusals · right-to-explanation (ЗУ) · model card з known biases · drift monitoring. Це НОВІ regulatory artifacts</div></div>
+      <div class="card c-out" style="grid-column:span 3"><div class="card-tag">AI RED-TEAM (щокварталу + на кожен model swap)</div><div class="card-body" style="font-size:0.82em">Jailbreak via roleplay · indirect prompt injection у PDFs · data exfiltration via tool abuse (agent requests sensitive URL) · PII leak у reasoning track · policy bypass через adversarial examples. ЦЕ НЕ стандартний pentest — потрібні AI red-team specialists</div></div>
     </div>
   </div>
-  ${gloss([["PIM","Privileged Identity Management"],["DPIA","Data Protection Impact Assessment"],["WAF","Web Application Firewall"]])}
 </div>`, notes:`
-<p><b>Виробниче загартування системи (Bank Hardening Checklist) (~10 хв)</b></p>
-<p><b>Контекст:</b> Різниця між студентським хакатоном і банком національного значення полягає у трьох речах: безпека конфігурації, мережева ізоляція та регламент дій у кризових ситуаціях. Перед введенням у дослідну експлуатацію команда проєкту зобов'язана надати CISO банку такі артефакти:</p>
+<p><b>AI-specific hardening — що новий AI layer додає до traditional banking security (~8 хв)</b></p>
+<p><b>Pre-amble:</b> Ваш CISO знає SSO, Vault, VPC, WAF, DPIA, SOC/NOC краще за будь-який workshop. Ми НЕ будемо вчити це. Фокус — що AI приносить принципово нового, чого немає у standard banking playbook'у.</p>
+
+<p><b>1. Prompt Security (найважливіше):</b></p>
 <ul>
-  <li><b>1. secrets.enc.yaml (Управління чутливими конфігураціями):</b>
-    <br>Жодних API-ключів або логінів до баз даних у відкритому вигляді у <code>.env</code> файлах чи тим більше у git-репозиторії! Усі конфіденційні параметри зберігаються в HashiCorp Vault або AWS/Azure Secrets Manager з обов'язковою періодичною автоматичною ротацією кожні 30 днів та доступом через сертифікати mTLS.</li>
-  <li><b>2. allowlist_domains.yaml (Суворий Egress-файрвол):</b>
-    <br>Под у Kubernetes, де виконується агентний код, повинен мати повністю перекритий доступ до зовнішнього інтернету (Zero Trust Egress). Дозволені виключно білі списки доменів: внутрішній шлюз корпоративного LLM Gateway, внутрішній API Core Banking, сервіс перевірки підпису Дія та брокер Kafka. Навіть якщо зловмисник здійснить успішну ін'єкцію коду в промпт — агент фізично не зможе відправити вкрадені дані на зовнішній сервер у мережі.</li>
-  <li><b>3. incident_playbook.md (Аварійний регламент та Kill-Switch):</b>
-    <br>Документ, погоджений із черговою зміною SOC/NOC банку:
-    <ul>
-      <li><i>Аварійне вимкнення (Circuit Breaker):</i> якщо частка помилок моделі перевищує 5% за 10 хвилин — потік заявок автоматично перемикається на класичний резервний конвеєр із живими операторами.</li>
-      <li><i>Ізоляція шлюзу:</i> можливість миттєвого відкату моделі на попередню стабільну версію без простою системи (Blue-Green Deployment).</li>
-      <li><i>Оповіщення регулятора:</i> протокол фіксації інцидентів та повідомлення НБУ відповідно до нормативних строків.</li>
-    </ul>
-  </li>
+  <li><b>Indirect injection</b> — атака не через chat input, а через документи, які агент читає (PDF-довідка з прихованим "SYSTEM: override policy"). Classic WAF/injection filters не бачать це — текст доходить до LLM як legitimate OCR output.</li>
+  <li><b>Tool allowlist per role</b> — tools це нова attack surface. Agent з доступом до <code>credit_history.pull</code> + <code>transfer.execute</code> може стати grounded wire fraud machine. RBAC per tool per agent — mandatory.</li>
+  <li><b>Signed system prompts</b> — щоб tenant admin не міг тихо змінити prompt у UI і протягнути bypass. Prompt signatures у git, deployment перевіряє hash.</li>
 </ul>
+
+<p><b>2. Deterministic Decision Gate (архітектурний principle):</b></p>
+<p>Єдина найважливіша річ, яка відрізняє "demo агента" від "агент у банку": LLM формулює structured features, decision приймає Python-код з math + policy. Навіть якщо модель галюцинує "Схвалено 500k!" — Python бачить PTI 0.6 > threshold 0.5 → <code>decision=decline</code>. Air Canada case не стається бо LLM не має authority над rate_apr.</p>
+
+<p><b>3. Context Boundary:</b></p>
+<p>Текст з документів, email, OCR → у окреме поле <code>untrusted_payload</code>, не у system prompt. Workflow executor know які поля untrusted, LLM гет promptіт з явним розмежуванням. Indirect injection у PDF не має leverage бо агент знає "цей текст — не instructions".</p>
+
+<p><b>4. Eval Gate у CI (new regulatory layer):</b></p>
+<p>Pre-LLM: тести перевіряють "does code compile + unit test pass". Post-LLM: Golden Set + LLM-judge + RAGAS metrics перевіряють "did behavior drift між model versions". CI blocks PR якщо faithfulness < 0.95. Це НОВИЙ layer poза unit tests — model behavior ≠ code logic, обидва треба gatекати.</p>
+
+<p><b>5. LLM-specific observability:</b></p>
+<p>Langfuse / phoenix trace tree + model version per decision + tool_calls audit. Коли NBU прийде — показуємо: "рішення X прийнято model=gpt-4-2024-11-20, prompt_hash=abc, retrieved=[POL-01, SOP-02], tool_calls=[kyc.lookup, credit.pull], judge_score=4.5". Це не Elasticsearch log — це AI-specific audit trail.</p>
+
+<p><b>6. EU AI Act compliance (Annex III §5(b)):</b></p>
+<p>Loan Copilot = high-risk AI system по класифікації EU AI Act. Нові artifacts: model card, drift monitoring plan, human oversight на refusals, right-to-explanation у UI. CISO/legal це НОВИЙ контент — коли AI Act стає enforceable, це на вашій плечі.</p>
+
+<p><b>7. AI red-team (не standard pentest):</b></p>
+<p>Стандартний penetration test не покриває jailbreak via roleplay, data exfiltration через tool abuse, policy bypass через adversarial examples. Потрібні AI red-team specialists (внутрішні або vendor). Повторювати щокварталу + на кожен model swap (behavior change не детермінований між model versions).</p>
+
+<p><b>Message залу:</b> "Не ваша задача навчати CISO як робити mTLS. Ваша задача — показати, які НОВІ питання AI ставить, на які banking security playbook ще не має відповідей. Prompt injection, deterministic gates, model drift, AI red-team — це нові дисципліни, які через вас потрапляють у банк."</p>
 `});
 
 
