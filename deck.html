@@ -2773,57 +2773,7 @@ SLIDES.push({ title:"Enterprise LLM Gateway", html:`
         Якщо в коді мультиагентної системи сталася помилка і два агенти почали безкінечно перекидатися повідомленнями — шлюз примусово зупиняє сесію, щойно вона перевищує поріг (наприклад, 50 викликів або 100 грн на сесію). Це захищає банк від випадкових мільйонних рахунків за ніч.</li>
     </ul>`});
 
-// --- Slide 15: W2 Use-case ---
-SLIDES.push({ title:"W2 Use-case", html:`
-<div class="slide">
-  <div class="slide-title">Webinar 2 · Use-case — <span class="accent">Eligibility (RAG) + Risk (tools)</span></div>
-  <div class="slide-subtitle">Два specialists — тепер з конкретним grounding та 3 tools</div>
-  <div class="content">
-    <div class="split-22">
-      <div class="card c-std">
-        <div class="card-tag">ELIGIBILITY · RAG</div>
-        <div style="color:var(--text-muted); font-size:0.78em; font-style:italic; margin-bottom:0.4em">"чи клієнт взагалі може отримати кредит?"</div>
-        <div class="card-body" style="font-size:0.82em; line-height:1.55">
-          <p><b style="color:var(--accent)">CORPUS:</b> loan-policies (~40 PDF/MD): POL-LOAN-*, SOP-LOAN-*, REG-BUR-*</p>
-          <p style="margin-top:0.4em"><b style="color:var(--accent)">RETRIEVAL:</b></p>
-          <p style="padding-left:0.6em; line-height:1.6">· hybrid: BM25 + dense (bge-m3)<br>· chunking: semantic, 500 tok, 50 overlap<br>· top-K=10 → cross-encoder → top-N=4<br>· filter: effective_date ≤ today</p>
-          <p style="margin-top:0.4em"><b style="color:var(--error)">GUARDRAILS:</b></p>
-          <p style="padding-left:0.6em">· citation mandatory (POL-*/SOP-*)<br>· refusal на unknown → escalate</p>
-          <p style="margin-top:0.4em; color:var(--lilac); font-style:italic">pgvector (HNSW) · bge-m3 · BGE-reranker</p>
-        </div>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:0.4em">
-        <div style="color:var(--box-sp); font-size:0.78em; font-weight:700; letter-spacing:0.1em; text-transform:uppercase">RISK · 3 TOOLS</div>
-        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">kyc.lookup</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> kyc_officer<br><span style="color:var(--accent)">cost</span> $0.80/call · 5/min</div></div>
-        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">credit_history.pull</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> loan_officer<br><span style="color:var(--accent)">consent</span> <b style="color:var(--warning)">так — recorded consent_id</b><br><span style="color:var(--accent)">cost</span> ~$1.50/call (UBKI) · 5/min</div></div>
-        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">risk.score</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> internal · write<br><span style="color:var(--accent)">role</span> risk_analyst<br><span style="color:var(--accent)">cost</span> $0.05/call · 60/min</div></div>
-      </div>
-    </div>
-    <div class="strip lilac"><b>GATEWAY+OBS:</b> litellm → DIAL on-prem (UA-резидент) або Azure OpenAI EU · budget 100 UAH/user/day · prompt cache on · Langfuse traces · OTel GenAI</div>
-    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.08)"><b style="color:var(--accent)">🎬 LIVE · CodeMie demo:</b> показуємо Eligibility Agent + 3 tools у CodeMie Workflows (Sequential). Код — у домашнє завдання · <code>module_2_grounding/03-exercise.md</code>.</div>
-  </div>
-  ${gloss([["RAG","Retrieval-Augmented Generation"],["RBAC","Role-Based Access Control"]])}
-</div>`, notes:`
-    <p><b>Timing:</b> 10–12 хвилин. Перехід від теорії до конкретної реалізації в архітектурі Loan Copilot.</p>
-    <p><b>Вступ:</b> «Ми розібрали правила заземлення та інструментів. Тепер подивимося, як вони втілюються у двох конкретних спеціалістах нашого кредитного конвеєра: <b>Eligibility Agent</b> (який працює суто через RAG) та <b>Risk Agent</b> (який працює виключно через інструменти).»</p>
-    <ul>
-      <li><b>1. Ліва панель · Eligibility Agent (RAG-спеціаліст):</b>
-        <br><i>Задача:</i> Відповісти на первинне запитання: «Чи має клієнт право подати заявку на цей кредит за базовими критеріями банку (вік, громадянство, наявність відкритого бізнесу для ФОП, ліміти суми)?».
-        <br><i>Корпус знань:</i> Близько 40 регламентів у форматі Markdown/PDF. Кожен файл має унікальний префікс: <code>POL-LOAN-*</code> (політики банку), <code>SOP-LOAN-*</code> (операційні процедури), <code>REG-BUR-*</code> (регламенти взаємодії з бюро).
-        <br><i>Пайплайн пошуку:</i> Семантичний чанкінг по 500 токенів із перекриттям 50 токенів. Ембедінг-модель <code>bge-m3</code> (підтримує українську та англійську термінологію). Пошук: гібридний (BM25 + Dense) відбирає 10 кандидатів, крос-енкодер переранжує до 4 найрелевантніших.
-        <br><i>Критичний метаданий фільтр:</i> <code>effective_date <= today</code>. Якщо банк ухвалив нову політику, яка набирає чинності з наступного місяця, агент не має права застосовувати її сьогодні.
-        <br><i>Обов'язкова цитата:</i> Агент формує відповідь лише з посиланням: «Схвалено попередньо на підставі SOP-LOAN-02 §4.1». Якщо відповіді немає — ескалація на оператора.</li>
-      <li><b>2. Права панель · Risk Agent (Tools-спеціаліст):</b>
-        <br><i>Задача:</i> Зібрати юридично достовірні дані про позичальника та розрахувати скоринг. Жодного RAG тут немає — лише прямі виклики 3 сервісів.
-        <br>· <b>Tool 1 (kyc.lookup):</b> Перевіряє санкційні списки, статус PEP (публічні діячі) та дійсність паспорта у держреєстрах. Side-effect: <code>external-read</code>. Викликається від імені ролі <code>kyc_officer</code>. Вартість — $0.80 за запит.
-        <br>· <b>Tool 2 (credit_history.pull):</b> Витягує кредитну історію з УБКІ (Українське бюро кредитних історій). Вартість — ~$1.50 за виклик (UAH 50–80, залежно від контракту). <b>Критична точка контролю:</b> поле <code>consent</code>. Агент фізично не може викликати цей метод без дійсного <code>consent_id</code> позичальника.
-        <br>· <b>Tool 3 (risk.score):</b> Запускає скорингову модель на базі отриманих даних і записує скоринг-бал у реєстр заявки. Side-effect: <code>internal-write</code>. Роль: <code>risk_analyst</code>. Вартість — $0.05.</li>
-      <li><b>3. Нижня стрічка · Шлюз та обсервабіліті:</b>
-        Усі звернення координуються через LiteLLM у приватний екосистемний ендпоінт. Трейси пишуться у Langfuse, метрики часу та витрат — через OpenTelemetry GenAI семантичні конвенції.</li>
-    </ul>
-    <p><b>Питання до залу:</b> «Чому Risk Agent не об'єднаний з Eligibility Agent в одного агента?» (Відповідь: Різні типи доступу до даних, різна юридична відповідальність, різний SLO та різна вартість викликів. Розділення ролей гарантує найменші привілеї — Least Privilege).`});
-
-// --- Slide 16: W2 Interactive — Tool canvas ---
+// --- Slide 15: W2 Interactive — Tool contract canvas (перед Use-case) ---
 SLIDES.push({ title:"W2 · Tool canvas", html:`
 <div class="slide">
   <div class="slide-title">W2 interactive · <span class="accent">Tool contract canvas</span></div>
@@ -2876,24 +2826,85 @@ SLIDES.push({ title:"W2 · Tool canvas", html:`
       </div>
     </div>
     <div class="strip">
-      <b>ДЕБРИФ ДЛЯ АРХІТЕКТОРА:</b> найчастіший дефект у продакшні — це відсутність ідемпотентності у write-тулах та відсутність consent gate на викликах із персональними даними.
+      <b>ДЕБРИФ ДЛЯ АРХІТЕКТОРА:</b> найчастіший дефект у продакшні — відсутність ідемпотентності у write-тулах та відсутність consent gate на викликах із PII.
     </div>
   </div>
   ${gloss([["RBAC","Role-Based Access Control"],["PII","Personally Identifiable Information"],["SLA","Service Level Objective"],["UUID","Universally Unique Identifier"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 12–15 хвилин інтерактивної роботи.</p>
-    <p><b>Формат фасилітації:</b></p>
+    <p><b>Timing:</b> 12–15 хв interactive. Йде ПЕРЕД W2 Use-case: учасники спочатку вручну проєктують tool contract, потім дивляться як це виглядає у реальному 7-крок Loan Copilot.</p>
+
+    <p><b>Чому саме ці 6 полів (а не 2 або 20):</b></p>
     <ul>
-      <li><b>Крок 1 (2 хв):</b> Поясніть задачу. Учасники беруть аркуш або текстовий редактор і обирають один інструмент: або зі свого робочого банківського проекту, або інструмент генерації кредитного договору <code>contract.generate</code>, або інструмент відправки SMS із підтвердженням <code>sms.send_otp</code>.</li>
-      <li><b>Крок 2 (6 хв):</b> Самостійне заповнення 6 секцій. Зверніть увагу на секції 3, 5 і 6 — зазвичай розробники думають лише про поля 1 і 2 (назва і типи даних).</li>
-      <li><b>Крок 3 (5 хв):</b> Дебрифінг у залі. Запитайте 2-3 учасників презентувати свій контракт.</li>
+      <li><b>Поля 1-2 (name, schema)</b> — те, що пишуть за замовчуванням усі ваші розробники. Якщо tool описаний тільки цими полями — він <b>не готовий до production</b>, лише до демо.</li>
+      <li><b>Поля 3-4 (side-effect, RBAC)</b> — що саме AI-архітектор додає понад "функція з Pydantic schema". LLM здатен викликати tool без розуміння фінансових наслідків — ваш обов'язок закодувати це у контракт.</li>
+      <li><b>Поля 5-6 (consent, SLA/budget)</b> — compliance + FinOps. Без них tenant у банку відмовить у підключенні на security review.</li>
     </ul>
-    <p><b>Пастки та провокативні запитання для фасилітатора:</b></p>
+
+    <p><b>Формат (10 хв work + 5 хв debrief):</b></p>
     <ul>
-      <li><i>Питання до інструменту запису (наприклад, видача кредиту або списання комісії):</i> «Що станеться, якщо мережа обірвалася після того, як гроші списалися, але до того, як модель отримала відповідь? Модель викличе цей тул ще раз? Якщо у вас немає Idempotency Key — ви спишете гроші клієнта двічі. Як ваш контракт це запобігає?»</li>
-      <li><i>Питання до інструменту читання персональних даних:</i> «Чи може оператор колл-центру через чат-бота випадково або навмисно викликати цей метод для свого знайомого? Який рядок коду забороняє йому це зробити?» (Відповідь: перевірка ролі RBAC на вході в метод).</li>
-      <li><i>Питання щодо SLA:</i> «Якщо зовнішнє бюро зависне на 60 секунд — чи заблокує це весь робочий процес оркестратора? Який таймаут ви заклали і що буде значенням fallback?»</li>
-    </ul>`});
+      <li><b>0-2 хв:</b> Поясніть шаблон. Покажіть зразок <code>credit_history.pull</code> праворуч — підкресліть як поля 3-6 змінюють сенс тулу від "функція" до "контракт".</li>
+      <li><b>2-10 хв:</b> Самостійна робота. Учасники обирають: tool зі свого проекту АБО з Loan Copilot (<code>send_contract_sms</code>, <code>check_pep</code>, <code>disburse_money</code>, <code>limit.reserve</code>). Заповнюють усі 6 полів письмово.</li>
+      <li><b>10-15 хв:</b> Дебриф — 2-3 учасники презентують. Фасилітатор підсвічує пропуски (чаще за все — поля 3, 5, 6).</li>
+    </ul>
+
+    <p><b>Провокативні питання фасилітатора під час дебрифу:</b></p>
+    <ul>
+      <li><i>Для write-tool (видача, списання):</i> "Мережа обірвалась після списання, до того як модель отримала response. LLM бачить timeout → викликає tool ще раз. Де у вашому контракті Idempotency Key, щоб не списати двічі?"</li>
+      <li><i>Для read-tool з PII (credit_history, kyc.lookup):</i> "Оператор call-центру через чат-бота пробує викликати цей метод для свого знайомого. Який рядок контракту це блокує?" (відповідь: RBAC + consent_id перевірка).</li>
+      <li><i>Для external-tool (UBKI, Дія):</i> "Зовнішнє бюро зависло на 60 сек. Чи блокує це весь workflow? Timeout + fallback — чи є у вашому контракті?"</li>
+    </ul>
+
+    <p><b>Місток до наступного слайду (W2 Use-case):</b> "Ваш заповнений контракт — приблизно те, що зараз подивимося у 7-крок Loan Copilot workflow. Там кожен з <code>intake → eligibility → kyc → consent → credit_history → risk → underwriter</code> викликає tool із саме такою 6-поля контрактною обв'язкою. Якщо під час перегляду помітите пропуск будь-якого поля — це реальний defect, а не academic exercise."</p>`});
+
+// --- Slide 16: W2 Use-case ---
+SLIDES.push({ title:"W2 Use-case", html:`
+<div class="slide">
+  <div class="slide-title">Webinar 2 · Use-case — <span class="accent">Eligibility (RAG) + Risk (tools)</span></div>
+  <div class="slide-subtitle">Два specialists — тепер з конкретним grounding та 3 tools</div>
+  <div class="content">
+    <div class="split-22">
+      <div class="card c-std">
+        <div class="card-tag">ELIGIBILITY · RAG</div>
+        <div style="color:var(--text-muted); font-size:0.78em; font-style:italic; margin-bottom:0.4em">"чи клієнт взагалі може отримати кредит?"</div>
+        <div class="card-body" style="font-size:0.82em; line-height:1.55">
+          <p><b style="color:var(--accent)">CORPUS:</b> loan-policies (~40 PDF/MD): POL-LOAN-*, SOP-LOAN-*, REG-BUR-*</p>
+          <p style="margin-top:0.4em"><b style="color:var(--accent)">RETRIEVAL:</b></p>
+          <p style="padding-left:0.6em; line-height:1.6">· hybrid: BM25 + dense (bge-m3)<br>· chunking: semantic, 500 tok, 50 overlap<br>· top-K=10 → cross-encoder → top-N=4<br>· filter: effective_date ≤ today</p>
+          <p style="margin-top:0.4em"><b style="color:var(--error)">GUARDRAILS:</b></p>
+          <p style="padding-left:0.6em">· citation mandatory (POL-*/SOP-*)<br>· refusal на unknown → escalate</p>
+          <p style="margin-top:0.4em; color:var(--lilac); font-style:italic">pgvector (HNSW) · bge-m3 · BGE-reranker</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:0.4em">
+        <div style="color:var(--box-sp); font-size:0.78em; font-weight:700; letter-spacing:0.1em; text-transform:uppercase">RISK · 3 TOOLS</div>
+        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">kyc.lookup</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> kyc_officer<br><span style="color:var(--accent)">cost</span> $0.80/call · 5/min</div></div>
+        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">credit_history.pull</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> external · read<br><span style="color:var(--accent)">role</span> loan_officer<br><span style="color:var(--accent)">consent</span> <b style="color:var(--warning)">так — recorded consent_id</b><br><span style="color:var(--accent)">cost</span> ~$1.50/call (UBKI) · 5/min</div></div>
+        <div class="card c-sp" style="padding:0.5em 0.8em"><div style="font-family:var(--font-mono); font-weight:700; font-size:0.95em">risk.score</div><div style="font-size:0.72em; margin-top:0.25em; font-family:var(--font-mono); line-height:1.6"><span style="color:var(--accent)">side_effect</span> internal · write<br><span style="color:var(--accent)">role</span> risk_analyst<br><span style="color:var(--accent)">cost</span> $0.05/call · 60/min</div></div>
+      </div>
+    </div>
+    <div class="strip lilac"><b>GATEWAY+OBS:</b> litellm → DIAL on-prem (UA-резидент) або Azure OpenAI EU · budget 100 UAH/user/day · prompt cache on · Langfuse traces · OTel GenAI</div>
+    <div class="strip" style="border-left-color:var(--accent); background:rgba(0,246,255,0.08)"><b style="color:var(--accent)">🎬 LIVE · CodeMie demo:</b> показуємо Eligibility Agent + 3 tools у CodeMie Workflows (Sequential). Код — у домашнє завдання · <code>module_2_grounding/03-exercise.md</code>.</div>
+  </div>
+  ${gloss([["RAG","Retrieval-Augmented Generation"],["RBAC","Role-Based Access Control"]])}
+</div>`, notes:`
+    <p><b>Timing:</b> 10–12 хвилин. Перехід від теорії до конкретної реалізації в архітектурі Loan Copilot.</p>
+    <p><b>Вступ:</b> «Ми розібрали правила заземлення та інструментів. Тепер подивимося, як вони втілюються у двох конкретних спеціалістах нашого кредитного конвеєра: <b>Eligibility Agent</b> (який працює суто через RAG) та <b>Risk Agent</b> (який працює виключно через інструменти).»</p>
+    <ul>
+      <li><b>1. Ліва панель · Eligibility Agent (RAG-спеціаліст):</b>
+        <br><i>Задача:</i> Відповісти на первинне запитання: «Чи має клієнт право подати заявку на цей кредит за базовими критеріями банку (вік, громадянство, наявність відкритого бізнесу для ФОП, ліміти суми)?».
+        <br><i>Корпус знань:</i> Близько 40 регламентів у форматі Markdown/PDF. Кожен файл має унікальний префікс: <code>POL-LOAN-*</code> (політики банку), <code>SOP-LOAN-*</code> (операційні процедури), <code>REG-BUR-*</code> (регламенти взаємодії з бюро).
+        <br><i>Пайплайн пошуку:</i> Семантичний чанкінг по 500 токенів із перекриттям 50 токенів. Ембедінг-модель <code>bge-m3</code> (підтримує українську та англійську термінологію). Пошук: гібридний (BM25 + Dense) відбирає 10 кандидатів, крос-енкодер переранжує до 4 найрелевантніших.
+        <br><i>Критичний метаданий фільтр:</i> <code>effective_date <= today</code>. Якщо банк ухвалив нову політику, яка набирає чинності з наступного місяця, агент не має права застосовувати її сьогодні.
+        <br><i>Обов'язкова цитата:</i> Агент формує відповідь лише з посиланням: «Схвалено попередньо на підставі SOP-LOAN-02 §4.1». Якщо відповіді немає — ескалація на оператора.</li>
+      <li><b>2. Права панель · Risk Agent (Tools-спеціаліст):</b>
+        <br><i>Задача:</i> Зібрати юридично достовірні дані про позичальника та розрахувати скоринг. Жодного RAG тут немає — лише прямі виклики 3 сервісів.
+        <br>· <b>Tool 1 (kyc.lookup):</b> Перевіряє санкційні списки, статус PEP (публічні діячі) та дійсність паспорта у держреєстрах. Side-effect: <code>external-read</code>. Викликається від імені ролі <code>kyc_officer</code>. Вартість — $0.80 за запит.
+        <br>· <b>Tool 2 (credit_history.pull):</b> Витягує кредитну історію з УБКІ (Українське бюро кредитних історій). Вартість — ~$1.50 за виклик (UAH 50–80, залежно від контракту). <b>Критична точка контролю:</b> поле <code>consent</code>. Агент фізично не може викликати цей метод без дійсного <code>consent_id</code> позичальника.
+        <br>· <b>Tool 3 (risk.score):</b> Запускає скорингову модель на базі отриманих даних і записує скоринг-бал у реєстр заявки. Side-effect: <code>internal-write</code>. Роль: <code>risk_analyst</code>. Вартість — $0.05.</li>
+      <li><b>3. Нижня стрічка · Шлюз та обсервабіліті:</b>
+        Усі звернення координуються через LiteLLM у приватний екосистемний ендпоінт. Трейси пишуться у Langfuse, метрики часу та витрат — через OpenTelemetry GenAI семантичні конвенції.</li>
+    </ul>
+    <p><b>Питання до залу:</b> «Чому Risk Agent не об'єднаний з Eligibility Agent в одного агента?» (Відповідь: Різні типи доступу до даних, різна юридична відповідальність, різний SLO та різна вартість викликів. Розділення ролей гарантує найменші привілеї — Least Privilege).`});
 // --- W3 Agenda ---
 SLIDES.push({ title:"W3 Agenda", html:`
 <div class="slide">
