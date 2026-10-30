@@ -2831,30 +2831,23 @@ SLIDES.push({ title:"W2 · Tool canvas", html:`
   </div>
   ${gloss([["RBAC","Role-Based Access Control"],["PII","Personally Identifiable Information"],["SLA","Service Level Objective"],["UUID","Universally Unique Identifier"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 12–15 хв interactive. Йде ПЕРЕД W2 Use-case: учасники спочатку вручну проєктують tool contract, потім дивляться як це виглядає у реальному 7-крок Loan Copilot.</p>
-
-    <p><b>Чому саме ці 6 полів (а не 2 або 20):</b></p>
+    <p><b>Timing:</b> 12–15 хвилин інтерактиву. Йде ПЕРЕД W2 Use-case — учасники спочатку вручну проєктують tool contract, потім побачать як це виглядає у 7-крок Loan Copilot workflow.</p>
+    <p><b>Вступ:</b> «За замовчуванням ваші розробники опишуть tool двома полями — name + Pydantic schema. Для демо ОК. Для production у банку — ні. Контракт tool'а має 6 полів; якщо хоч одне порожнє — security review не пропустить. Зараз ви самостійно спроєктуєте один такий контракт, щоб відчути різницю між 'функцією' і 'tool-контрактом'.»</p>
     <ul>
-      <li><b>Поля 1-2 (name, schema)</b> — те, що пишуть за замовчуванням усі ваші розробники. Якщо tool описаний тільки цими полями — він <b>не готовий до production</b>, лише до демо.</li>
-      <li><b>Поля 3-4 (side-effect, RBAC)</b> — що саме AI-архітектор додає понад "функція з Pydantic schema". LLM здатен викликати tool без розуміння фінансових наслідків — ваш обов'язок закодувати це у контракт.</li>
-      <li><b>Поля 5-6 (consent, SLA/budget)</b> — compliance + FinOps. Без них tenant у банку відмовить у підключенні на security review.</li>
+      <li><b>1. Чому саме ці 6 полів (а не 2 чи 20):</b>
+        <br><i>Поля 1-2 (name, schema):</i> дефолт від розробника. Виглядає як "функція".
+        <br><i>Поля 3-4 (side-effect, RBAC):</i> value-add AI-архітектора. LLM здатен викликати tool без розуміння фінансових наслідків — ваш обов'язок закодувати їх у контракт.
+        <br><i>Поля 5-6 (consent, SLA/budget):</i> compliance + FinOps. Без них tenant у банку відмовить у підключенні.</li>
+      <li><b>2. Формат фасилітації (10 хв робота + 5 хв дебриф):</b>
+        <br><i>0-2 хв:</i> Поясніть шаблон. Покажіть зразок <code>credit_history.pull</code> праворуч — підкресліть, як поля 3-6 перетворюють "функцію" на "контракт".
+        <br><i>2-10 хв:</i> Самостійна робота. Учасники обирають: tool зі свого проекту АБО з Loan Copilot (<code>send_contract_sms</code>, <code>check_pep</code>, <code>disburse_money</code>, <code>limit.reserve</code>). Заповнюють усі 6 полів письмово.
+        <br><i>10-15 хв:</i> Дебриф — 2-3 учасники презентують. Підсвічуйте пропуски (найчастіше — поля 3, 5, 6).</li>
+      <li><b>3. Провокативні питання під час дебрифу (підбирайте за типом tool'а):</b>
+        <br><i>Write-tool (disburse, charge):</i> "Мережа обірвалась після списання, до того як модель отримала response. LLM бачить timeout → викликає tool ще раз. Де у вашому контракті Idempotency Key, щоб не списати двічі?"
+        <br><i>Read-tool з PII (credit_history, kyc.lookup):</i> "Оператор call-центру через чат-бота пробує викликати цей метод для свого знайомого. Який рядок контракту це блокує?" (відповідь: RBAC + consent_id).
+        <br><i>External-tool (UBKI, Дія):</i> "Зовнішнє бюро зависло на 60 сек. Чи блокує це весь workflow? Timeout + fallback — чи є у вашому контракті?"</li>
     </ul>
-
-    <p><b>Формат (10 хв work + 5 хв debrief):</b></p>
-    <ul>
-      <li><b>0-2 хв:</b> Поясніть шаблон. Покажіть зразок <code>credit_history.pull</code> праворуч — підкресліть як поля 3-6 змінюють сенс тулу від "функція" до "контракт".</li>
-      <li><b>2-10 хв:</b> Самостійна робота. Учасники обирають: tool зі свого проекту АБО з Loan Copilot (<code>send_contract_sms</code>, <code>check_pep</code>, <code>disburse_money</code>, <code>limit.reserve</code>). Заповнюють усі 6 полів письмово.</li>
-      <li><b>10-15 хв:</b> Дебриф — 2-3 учасники презентують. Фасилітатор підсвічує пропуски (чаще за все — поля 3, 5, 6).</li>
-    </ul>
-
-    <p><b>Провокативні питання фасилітатора під час дебрифу:</b></p>
-    <ul>
-      <li><i>Для write-tool (видача, списання):</i> "Мережа обірвалась після списання, до того як модель отримала response. LLM бачить timeout → викликає tool ще раз. Де у вашому контракті Idempotency Key, щоб не списати двічі?"</li>
-      <li><i>Для read-tool з PII (credit_history, kyc.lookup):</i> "Оператор call-центру через чат-бота пробує викликати цей метод для свого знайомого. Який рядок контракту це блокує?" (відповідь: RBAC + consent_id перевірка).</li>
-      <li><i>Для external-tool (UBKI, Дія):</i> "Зовнішнє бюро зависло на 60 сек. Чи блокує це весь workflow? Timeout + fallback — чи є у вашому контракті?"</li>
-    </ul>
-
-    <p><b>Місток до наступного слайду (W2 Use-case):</b> "Ваш заповнений контракт — приблизно те, що зараз подивимося у 7-крок Loan Copilot workflow. Там кожен з <code>intake → eligibility → kyc → consent → credit_history → risk → underwriter</code> викликає tool із саме такою 6-поля контрактною обв'язкою. Якщо під час перегляду помітите пропуск будь-якого поля — це реальний defect, а не academic exercise."</p>`});
+    <p><b>Місток до наступного слайду:</b> «Ваш заповнений контракт — приблизно те, що зараз побачимо у реальному 7-крок Loan Copilot: кожен з <code>intake → eligibility → kyc → consent → credit_history → risk → underwriter</code> викликає tool із саме такою 6-поля обв'язкою. Якщо помітите пропуск будь-якого поля — це реальний defect, не academic exercise.»</p>`});
 
 // --- Slide 16: W2 Use-case ---
 SLIDES.push({ title:"W2 Use-case", html:`
