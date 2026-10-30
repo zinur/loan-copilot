@@ -2773,43 +2773,69 @@ SLIDES.push({ title:"Enterprise LLM Gateway", html:`
         Якщо в коді мультиагентної системи сталася помилка і два агенти почали безкінечно перекидатися повідомленнями — шлюз примусово зупиняє сесію, щойно вона перевищує поріг (наприклад, 50 викликів або 100 грн на сесію). Це захищає банк від випадкових мільйонних рахунків за ніч.</li>
     </ul>`});
 
-// --- Slide 15: W2 Interactive — Tool contract canvas (перед Use-case) ---
+// --- Slide 15: W2 Interactive — Tool contract canvas (Hybrid Socratic) ---
 SLIDES.push({ title:"W2 · Tool canvas", html:`
 <div class="slide">
   <div class="slide-title">W2 interactive · <span class="accent">Tool contract canvas</span></div>
-  <div class="slide-subtitle">Кожен tool — 6 полів. Якщо хоч одне порожнє — tool не готовий до production</div>
+  <div class="slide-subtitle">4 поля ви знаєте з класичного API design. Що бракує для банку з AI tool-calling? <span style="color:var(--accent)">(натисни ? → reveal)</span></div>
   <div class="content">
     <div class="split-22">
       <div class="card c-acc">
         <div class="card-tag">ШАБЛОН · 6 полів</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5em; margin-top:0.4em">
-          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em">
+          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.76em">
             <b style="color:var(--accent)">1. NAME + INTENT</b><br>
-            <span style="color:var(--text-muted)">Назва та опис для LLM</span>
+            <span style="color:var(--text-muted)">Назва + опис для LLM</span><br>
+            <span style="color:var(--accent); font-size:0.85em; font-style:italic">з OpenAI tool spec / MCP</span>
           </div>
-          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em">
+          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.76em">
             <b style="color:var(--accent)">2. SCHEMA I/O</b><br>
-            <span style="color:var(--text-muted)">Pydantic типи на вхід/вихід</span>
+            <span style="color:var(--text-muted)">Pydantic / JSON Schema типи</span><br>
+            <span style="color:var(--accent); font-size:0.85em; font-style:italic">з OpenAI tool spec / MCP</span>
           </div>
-          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em">
-            <b style="color:var(--box-sp)">3. SIDE EFFECT</b><br>
-            <span style="color:var(--text-muted)">none · read · write · ext</span>
+
+          <div class="flip-card" tabindex="0" role="button" aria-label="Reveal field 3" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}" style="min-height:5.2em">
+            <div class="flip-card-inner">
+              <div class="flip-card-face flip-card-front" style="background:rgba(170,110,255,0.12); border:1px dashed var(--lilac); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em; display:flex; align-items:center; justify-content:center; flex-direction:column">
+                <b style="color:var(--lilac); font-size:1.8em; line-height:1">?</b>
+                <span style="color:var(--text-muted); margin-top:0.2em">Що тут?</span>
+              </div>
+              <div class="flip-card-face flip-card-back" style="background:rgba(170,110,255,0.14); padding:0.4em 0.6em; border-radius:4px; font-size:0.76em">
+                <b style="color:var(--lilac)">3. SIDE-EFFECT</b><br>
+                <span style="color:var(--text-muted)">none / read / write / external</span><br>
+                <span style="color:var(--lilac); font-size:0.85em; font-style:italic">з Anthropic MCP (2025): readOnlyHint, destructiveHint, idempotentHint</span>
+              </div>
+            </div>
           </div>
-          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em">
+
+          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.76em">
             <b style="color:var(--box-sp)">4. RBAC ROLE</b><br>
-            <span style="color:var(--text-muted)">Хто має право викликати</span>
+            <span style="color:var(--text-muted)">Хто має право викликати</span><br>
+            <span style="color:var(--box-sp); font-size:0.85em; font-style:italic">з Zero Trust / Enterprise IAM</span>
           </div>
-          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em">
-            <b style="color:var(--warning)">5. AUDIT & CONSENT</b><br>
-            <span style="color:var(--text-muted)">Consent gate для PII</span>
+
+          <div class="flip-card" tabindex="0" role="button" aria-label="Reveal field 5" onclick="this.classList.toggle('is-flipped')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-flipped');event.preventDefault();event.stopPropagation();}" style="min-height:5.2em">
+            <div class="flip-card-inner">
+              <div class="flip-card-face flip-card-front" style="background:rgba(255,181,71,0.12); border:1px dashed var(--warning); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em; display:flex; align-items:center; justify-content:center; flex-direction:column">
+                <b style="color:var(--warning); font-size:1.8em; line-height:1">?</b>
+                <span style="color:var(--text-muted); margin-top:0.2em">Що тут?</span>
+              </div>
+              <div class="flip-card-face flip-card-back" style="background:rgba(255,181,71,0.14); padding:0.4em 0.6em; border-radius:4px; font-size:0.76em">
+                <b style="color:var(--warning)">5. AUDIT & CONSENT</b><br>
+                <span style="color:var(--text-muted)">consent_id + audit event per call</span><br>
+                <span style="color:var(--warning); font-size:0.85em; font-style:italic">з GDPR Art.7 + AI Act Art.12 + ЗУ Ст.7</span>
+              </div>
+            </div>
           </div>
-          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.78em">
-            <b style="color:var(--warning)">6. SLA & BUDGET</b><br>
-            <span style="color:var(--text-muted)">Timeout, rate limit, cost</span>
+
+          <div style="background:var(--bg-secondary); padding:0.4em 0.6em; border-radius:4px; font-size:0.76em">
+            <b style="color:var(--box-std)">6. SLA & BUDGET</b><br>
+            <span style="color:var(--text-muted)">timeout · rate-limit · cost cap</span><br>
+            <span style="color:var(--box-std); font-size:0.85em; font-style:italic">з FinOps + SRE patterns</span>
           </div>
         </div>
-        <div style="margin-top:0.6em; font-size:0.82em; color:var(--text-secondary)">
-          <b>Завдання (10 хв):</b> Оберіть інструмент з вашого проекту (або тул для Loan Copilot, наприклад <code>send_contract_sms</code> чи <code>check_pep</code>) та повністю заповніть усі 6 полів контракту.
+        <div style="margin-top:0.5em; font-size:0.78em; color:var(--text-muted); font-style:italic">
+          💡 <b>Soкратичне завдання (3 хв):</b> подивіться на 4 заповнені поля — це classic API design. Яких 2 полів бракує для банку, що викликає AI tool через LLM? Після обговорення — click ? для reveal.
         </div>
       </div>
 
@@ -2818,36 +2844,41 @@ SLIDES.push({ title:"W2 · Tool canvas", html:`
         <div style="font-size:0.76em; font-family:var(--font-mono); line-height:1.65; color:var(--text-secondary)">
           <span style="color:var(--accent)">1. NAME:</span> credit_history.pull — запит кредитної історії з УБКІ<br>
           <span style="color:var(--accent)">2. SCHEMA:</span> In: {tax_id: TaxId, consent_id: UUID} → Out: {score: int, arrears: list, status: str}<br>
-          <span style="color:var(--box-sp)">3. SIDE-EFFECT:</span> external · read (запит платний, без повторних мутацій)<br>
-          <span style="color:var(--box-sp)">4. RBAC:</span> role = "loan_underwriter" (заборонено ролі customer_support)<br>
-          <span style="color:var(--warning)">5. CONSENT:</span> обов'язковий перевірений consent_id у БД з міткою часу<br>
-          <span style="color:var(--warning)">6. SLA/COST:</span> timeout 4.0s · rate-limit 10/min · вартість ~$1.50/виклик (UBKI)
+          <span style="color:var(--lilac)">3. SIDE-EFFECT:</span> external · read (запит платний, без повторних мутацій) <span style="color:var(--text-muted)">[MCP]</span><br>
+          <span style="color:var(--box-sp)">4. RBAC:</span> role = "loan_underwriter" (заборонено ролі customer_support) <span style="color:var(--text-muted)">[Zero Trust]</span><br>
+          <span style="color:var(--warning)">5. CONSENT:</span> обов'язковий перевірений consent_id у БД з міткою часу <span style="color:var(--text-muted)">[GDPR Art.7]</span><br>
+          <span style="color:var(--box-std)">6. SLA/COST:</span> timeout 4.0s · rate-limit 10/min · вартість ~$1.50/виклик <span style="color:var(--text-muted)">[FinOps]</span>
+        </div>
+        <div style="margin-top:0.5em; font-size:0.78em; color:var(--text-muted); font-style:italic">
+          Після reveal — <b>10 хв заповніть свій tool</b> (<code>send_contract_sms</code> / <code>check_pep</code> / <code>disburse_money</code>). 5 хв дебриф.
         </div>
       </div>
     </div>
     <div class="strip">
-      <b>ДЕБРИФ ДЛЯ АРХІТЕКТОРА:</b> найчастіший дефект у продакшні — відсутність ідемпотентності у write-тулах та відсутність consent gate на викликах із PII.
+      <b>КЛЮЧОВИЙ MOMENT:</b> поля 3 + 5 — це саме те, що AI-архітектор додає понад класичний API-контракт. LLM може викликати tool без розуміння наслідків — ваш обов'язок закодувати side-effect classification + consent/audit у контракт.
     </div>
   </div>
-  ${gloss([["RBAC","Role-Based Access Control"],["PII","Personally Identifiable Information"],["SLA","Service Level Objective"],["UUID","Universally Unique Identifier"]])}
+  ${gloss([["RBAC","Role-Based Access Control"],["MCP","Model Context Protocol (Anthropic 2025 spec)"],["PII","Personally Identifiable Information"],["SLA","Service Level Objective"]])}
 </div>`, notes:`
-    <p><b>Timing:</b> 12–15 хвилин інтерактиву. Йде ПЕРЕД W2 Use-case — учасники спочатку вручну проєктують tool contract, потім побачать як це виглядає у 7-крок Loan Copilot workflow.</p>
-    <p><b>Вступ:</b> «За замовчуванням ваші розробники опишуть tool двома полями — name + Pydantic schema. Для демо ОК. Для production у банку — ні. Контракт tool'а має 6 полів; якщо хоч одне порожнє — security review не пропустить. Зараз ви самостійно спроєктуєте один такий контракт, щоб відчути різницю між 'функцією' і 'tool-контрактом'.»</p>
+    <p><b>Timing:</b> 15 хвилин (3 Socratic + 10 робота + 2 дебриф). Йде ПЕРЕД W2 Use-case — учасники самі деривують 2 "missing" поля, потім застосовують у exercise.</p>
+    <p><b>Вступ:</b> «На екрані 4 поля — class ic API design, ви бачите такий контракт щодня: name, schema, RBAC role, SLA. ОК. Але 2 поля закриті знаком питання. Задача залу — за 3 хвилини придумати, яких 2 полів бракує для банку, де tool викликає НЕ детермінований Python-код, а LLM через reasoning. Після вашої версії — ми відкриваємо карти.»</p>
     <ul>
-      <li><b>1. Чому саме ці 6 полів (а не 2 чи 20):</b>
-        <br><i>Поля 1-2 (name, schema):</i> дефолт від розробника. Виглядає як "функція".
-        <br><i>Поля 3-4 (side-effect, RBAC):</i> value-add AI-архітектора. LLM здатен викликати tool без розуміння фінансових наслідків — ваш обов'язок закодувати їх у контракт.
-        <br><i>Поля 5-6 (consent, SLA/budget):</i> compliance + FinOps. Без них tenant у банку відмовить у підключенні.</li>
-      <li><b>2. Формат фасилітації (10 хв робота + 5 хв дебриф):</b>
-        <br><i>0-2 хв:</i> Поясніть шаблон. Покажіть зразок <code>credit_history.pull</code> праворуч — підкресліть, як поля 3-6 перетворюють "функцію" на "контракт".
-        <br><i>2-10 хв:</i> Самостійна робота. Учасники обирають: tool зі свого проекту АБО з Loan Copilot (<code>send_contract_sms</code>, <code>check_pep</code>, <code>disburse_money</code>, <code>limit.reserve</code>). Заповнюють усі 6 полів письмово.
-        <br><i>10-15 хв:</i> Дебриф — 2-3 учасники презентують. Підсвічуйте пропуски (найчастіше — поля 3, 5, 6).</li>
-      <li><b>3. Провокативні питання під час дебрифу (підбирайте за типом tool'а):</b>
-        <br><i>Write-tool (disburse, charge):</i> "Мережа обірвалась після списання, до того як модель отримала response. LLM бачить timeout → викликає tool ще раз. Де у вашому контракті Idempotency Key, щоб не списати двічі?"
-        <br><i>Read-tool з PII (credit_history, kyc.lookup):</i> "Оператор call-центру через чат-бота пробує викликати цей метод для свого знайомого. Який рядок контракту це блокує?" (відповідь: RBAC + consent_id).
-        <br><i>External-tool (UBKI, Дія):</i> "Зовнішнє бюро зависло на 60 сек. Чи блокує це весь workflow? Timeout + fallback — чи є у вашому контракті?"</li>
+      <li><b>1. Socratic phase (0-3 хв): нехай зал сам деривує.</b>
+        <br><i>Hint-питання якщо застрягли:</i>
+        <br>· "LLM через галюцинацію викликає <code>disburse_money</code>. Який шар контракту мав би попередити?"
+        <br>· "credit_history.pull коштує $1.50 — одна галюцинація = 1000 викликів = $1500 за хвилину. Що у контракті зупинить?"
+        <br>· "Клієнт у суді каже 'я не давав згоди на запит УБКІ'. Де у контракті доказ?"
+        <br><i>Очікувана відповідь:</i> зал прийде до side-effect classification (поле 3) + consent/audit (поле 5). Click ? → reveal атрибуцію.</li>
+      <li><b>2. Чому саме ці 2 (атрибуція для reveal):</b>
+        <br><i>Поле 3 (SIDE-EFFECT):</i> Anthropic MCP 2025 spec додав <code>readOnlyHint</code>, <code>destructiveHint</code>, <code>idempotentHint</code>, <code>openWorldHint</code> саме тому що LLM-powered agents потребують цієї класифікації для safety guardrails. У OpenAI tool spec цього немає — gap, який indust tries to close.
+        <br><i>Поле 5 (AUDIT & CONSENT):</i> GDPR Art.7 (explicit consent), EU AI Act Art.12 (logging high-risk AI decisions), ЗУ "Про захист персональних даних" Ст.7. Не nice-to-have — обов'язковий compliance artefact для PB tenant onboarding review.
+        <br><i>Інші 4 поля:</i> 1-2 з OpenAI/MCP spec (industry baseline), 4 з Zero Trust/IAM (CISO baseline), 6 з FinOps/SRE patterns. Якщо AI-архітектор не додасть 3+5 — тобто саме його value-add.</li>
+      <li><b>3. Exercise (3-13 хв work + 13-15 хв дебриф):</b>
+        <br><i>3-13 хв:</i> Учасники беруть свій tool АБО з Loan Copilot (<code>send_contract_sms</code>, <code>check_pep</code>, <code>disburse_money</code>, <code>limit.reserve</code>). Заповнюють усі 6 полів письмово. Акцент на поля 3+5 — щоб не повторити helplessly для свого case.
+        <br><i>13-15 хв:</i> 1-2 учасники презентують. Фасилітатор підсвічує пропуски у 3+5.
+        <br><i>Провокативні debrief-питання за типом tool'а:</i> write-tool → "де idempotency?"; read-PII tool → "хто за RBAC + consent_id?"; external-tool → "timeout + fallback?".</li>
     </ul>
-    <p><b>Місток до наступного слайду:</b> «Ваш заповнений контракт — приблизно те, що зараз побачимо у реальному 7-крок Loan Copilot: кожен з <code>intake → eligibility → kyc → consent → credit_history → risk → underwriter</code> викликає tool із саме такою 6-поля обв'язкою. Якщо помітите пропуск будь-якого поля — це реальний defect, не academic exercise.»</p>`});
+    <p><b>Місток до наступного слайду:</b> «Через хвилину побачимо реальний 7-крок Loan Copilot (Eligibility RAG + Risk tools). Там кожен tool має саме такий 6-поля контракт з атрибуцією MCP + GDPR + FinOps. Ваша Socratic відповідь (що 3+5 — AI-специфічні доповнення) — буквально підтверджена architecture'ом.»</p>`});
 
 // --- Slide 16: W2 Use-case ---
 SLIDES.push({ title:"W2 Use-case", html:`
