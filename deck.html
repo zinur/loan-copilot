@@ -719,13 +719,23 @@ html, body {
   font-size:1.1em; transition:transform 0.3s ease;
   margin-left:0.5em;
 }
-.arch-card[open] .arch-chev { transform:rotate(90deg); color:var(--k, var(--accent)); }
-.arch-card[open] {
+.arch-card[open] .arch-chev,
+.arch-card.is-open .arch-chev { transform:rotate(90deg); color:var(--k, var(--accent)); }
+.arch-card[open],
+.arch-card.is-open {
   background:linear-gradient(135deg,
     color-mix(in srgb, var(--k, var(--box-std)) 10%, var(--bg-card)) 0%,
     var(--bg-secondary) 100%);
   box-shadow:0 4px 16px rgba(0,0,0,0.4), inset 0 0 0 1px color-mix(in srgb, var(--k, var(--box-std)) 20%, transparent);
 }
+.arch-card.is-clickable { cursor:pointer; user-select:none; }
+.arch-card.is-clickable:focus { outline:2px solid var(--accent); outline-offset:2px; }
+.arch-card-head {
+  padding:0.8em 1em;
+  display:flex; align-items:center; gap:0.7em;
+}
+.arch-card.is-clickable .arch-detail { display:none; }
+.arch-card.is-clickable.is-open .arch-detail { display:block; }
 .arch-detail {
   padding:0 1em 0.9em calc(1em + 1.3em + 0.7em);  /* align з текстом після icon */
   font-size:0.84em; line-height:1.5;
@@ -2548,18 +2558,18 @@ SLIDES.push({ title:"Advanced RAG", html:`
         {cls:'c-sp',   ic:'i-workflow',   tag:'5 · RAPTOR SUMMARY TREES',   front:'Рекурсивна сумаризація чанків у дерево · для holistic запитів', vendors:'RAPTOR (ICLR 2024) · LlamaIndex Recursive Retriever', back:'<p><b>Cost:</b> HIGH за індексації — O(N log N) LLM calls для tree summaries. Re-build при 10%+ оновленнях.</p><p><b>Win:</b> «які загальні принципи кредитної політики?» — на chunk-level такі питання провалюються.</p><p><b>Deploy order:</b> ТІЛЬКИ для holistic / high-level Q (CRO queries). Specific lookup — звичайний RAG.</p>'},
         {cls:'c-out',  ic:'i-share',      tag:'6 · QUERY REWRITE / HYDE',   front:'HyDE або декомпозиція на підзапити · для коротких/неоднозначних query', vendors:'HyDE · Multi-Query · RAG-Fusion · Step-back Prompting', back:'<p><b>Cost:</b> +1 LLM call per user query, +300–500ms latency на критичному path.</p><p><b>Win:</b> ~+20% recall на коротких/розмовних запитах («як оплатити»).</p><p><b>Deploy order:</b> ОСТАННЬОЮ. Спочатку чини retrieval (#1-#4). Rewrite — коли user queries структурно поганенькі.</p>'},
       ].map(c => `
-        <details class="arch-card ${c.cls}">
-          <summary>
+        <div class="arch-card ${c.cls} is-clickable" tabindex="0" role="button" aria-label="Toggle ${c.tag}" onclick="this.classList.toggle('is-open')" onkeydown="if(event.key==='Enter'||event.key===' '){this.classList.toggle('is-open');event.preventDefault();}">
+          <div class="arch-card-head">
             <svg class="arch-ico"><use href="#${c.ic}"/></svg>
             <span class="arch-tag">${c.tag}</span>
             <span class="arch-front">${c.front}</span>
             <span class="arch-chev">▸</span>
-          </summary>
+          </div>
           <div class="arch-detail" style="font-size:0.82em; line-height:1.45">
             ${c.back}
             <p style="margin-top:0.4em; color:var(--text-muted); font-size:0.92em; font-style:italic">${c.vendors}</p>
           </div>
-        </details>
+        </div>
       `).join('')}
     </div>
     <div class="strip">
