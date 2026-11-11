@@ -14,7 +14,7 @@
 | 3:00–5:00 | **Payload #1 Happy path** (повний flow) | Parent chat |
 | 5:00–6:00 | Trace у Langfuse (tool_calls_made + citations) | Langfuse tab |
 | 6:00–7:30 | **Payload #2 FOP refusal** (RAG cite POL-LOAN-01 §4.2.1) | Parent chat |
-| 7:30–9:00 | **Payload #3 Consent block** (interrupt_before works) | Parent chat |
+| 7:30–9:00 | **Payload #3 Consent block** (demo verifier блокує workflow) | Parent chat |
 | 9:00–10:00 | Guardrails config walk-through + Q&A | Project → Guardrails |
 
 ---
@@ -65,7 +65,7 @@
 
 **Питання до залу:** "Чому `eligibility` окремо від `risk`? Чому не
 один агент?" → **Правильна відповідь:** different data access (RAG vs
-tool), different RBAC, different SLO (RAG ~200ms, tool ~800ms), different
+tool), different RBAC, different SLO (RAG ~200ms, tool ~800ms — ілюстративно), different
 owners (Policy team vs Risk team).
 
 ---
@@ -79,17 +79,19 @@ owners (Policy team vs Risk team).
 1. **Intake** — повертає JSON з 8 полями.
 2. **Eligibility** — JSON з `citations: ["[POL-LOAN-01 §2.1]", ...]`.
    **Клік у citation у UI** → показує уривок чанку з datasource.
-3. **Consent Gate** — chat PAUSES. UI показує "waiting for human
-   confirmation". Click **Resume with input** → введи `{"consent_given": true, "consent_id": "consent-demo-01"}`.
+3. **Consent Gate (demo verifier)** — `consent-gate-agent` знаходить у
+   початковому повідомленні фразу «Згоден на запит УБКІ» і генерує
+   `consent_id=consent-1234567890-demo`. Справжньої паузи у W2-демо немає
+   (Sequential workflow через "Run workflow" не підтримує HITL resume).
 4. **KYC → Credit History → Risk** — показує tool_calls_made у output.
-5. **Underwriter** — `decision: approve, rate_apr: 18.5` з citation
-   `[SOP-CREDIT-02 §5]`.
+5. **Underwriter** — `decision: approve, rate_apr: 18.5` (Tier B) з citation
+   `[SOP-CREDIT-02 §3.1]`.
 
 **Що говориш у момент consent gate:**
-> "Ось це головне у W2. Workflow паузиться, бо `interrupt_before: true`
-> на цьому state. У проді замість чат-prompt'у — це операційник у
-> back-office UI натискає «згода отримана» після того як клієнт
-> підписав OTP. CodeMie сам підхопить і продовжить з того ж thread_id."
+> "Ось це головне у W2: без `consent_id` UBKI недоступний. У демо це
+> verifier за явною фразою згоди. У проді consent_id формує UI/бекенд після
+> підпису клієнта (OTP / Дія.Підпис), а справжня durable-пауза з resume
+> через API — це W3 (3 durable waits + 2 умовні HITL)."
 
 ---
 
@@ -103,20 +105,20 @@ owners (Policy team vs Risk team).
 ├── intake-state       (180ms, 1200 tokens)
 ├── eligibility-state  (420ms, RAG retrieval + LLM)
 │   └── rag.search     (42ms, 4 chunks returned)
-├── consent-gate       (interrupted, resumed after 2min human delay)
+├── consent-gate       (demo verifier, consent_id generated)
 ├── kyc-state
 │   └── tool.kyc_lookup (320ms, mock response)
 ├── credit-history-state
 │   └── tool.credit_history_pull (820ms, consent_id verified)
 ├── risk-state
-│   └── tool.risk_score (120ms, band=A)
+│   └── tool.risk_score (120ms, band=B)
 └── underwriter-state  (640ms, 2200 tokens, Tier 2 LLM)
 ```
 
 **Що говориш:**
 > "Кожен span з `gen_ai.*` attributes (OpenTelemetry GenAI semconv) +
 > наші додаткові: `tool.name`, `rbac.role`, `consent_id_present`,
-> `cost_usd`. Audit log для НБУ готовий — 7 років retention."
+> `cost_usd`. Audit log для НБУ готовий (строк зберігання — за політикою банку)."
 
 ---
 
@@ -131,7 +133,7 @@ owners (Policy team vs Risk team).
    {
      "eligible": false,
      "citations": ["[POL-LOAN-01 §4.2.1]"],
-     "reason": "ФОП < 6 міс → consumer недоступний. Альтернатива: забезпечувальний депозит (SOP-CREDIT-02 §7.3).",
+     "reason": "ФОП без застави на суму понад 100 000 грн: потрібна реєстрація ≥ 12 міс. Альтернатива: забезпечений кредит (POL-LOAN-01 §4.2.1).",
      "escalate_to_human": false
    }
    ```
@@ -143,28 +145,29 @@ owners (Policy team vs Risk team).
 > тексту. Юрист банку може взяти цей output і довести у суді, що
 > рішення обґрунтоване.
 >
-> Бонус для CFO: ми НЕ викликали UBKI ($1.50 saved) ← при 7000 refusals
-> на день це ~$10.5k saved/day."
+> Бонус для CFO: ми НЕ викликали UBKI (~$1.50 saved) ← ілюстративно:
+> при ~9 800 стартів на день, що не доходять до виклику бюро (модельне припущення
+> воркшопу, воронка зі слайдів FinOps) це ~$14.7k/день. Ціна $1.50 — базовий
+> тариф УБКІ (72 грн з ПДВ); при передачі даних у бюро вона нижча."
 
 ---
 
 ## 7:30–9:00 · Payload #3 Consent block
 
-**Копіюй** payload #3 (Олена Приходько) + при consent prompt відповідаєш
-"не хочу давати згоду".
+**Копіюй** payload #3 (Олена Приходько): у тексті вже є "Не хочу давати згоду".
 
 **Що бачать:**
 1. Intake OK.
 2. Eligibility OK.
-3. **Consent Gate — pause.**
-4. Клієнт відмовляє → `consent_given: false, consent_id: ""`.
+3. **Consent Gate (demo verifier)** — явної згоди в тексті немає.
+4. Verifier не знаходить явної згоди → `consent_given: false, consent_id: ""`.
 5. Workflow термінує на consent gate, НЕ викликає UBKI.
-6. **Audit log entry:** `BLOCKED_NO_CONSENT`.
+6. **Audit:** у Python-реалізації — `blocked_no_consent` в `audit.jsonl`.
 
 **Акцент:**
 > "Два рівні захисту: (1) prompt discipline — risk-agent не викличе
 > tool без consent_id, (2) tool-level enforcement — сам Python wrapper
-> credit_history_pull перевіряє consent у БД.
+> credit_history_pull перевіряє consent у реєстрі згод.
 >
 > **Чому обидва?** Air Canada навчила, що prompt-only захист ламається
 > prompt-injection'ом. Deterministic tool-level — second line of defense."
@@ -186,7 +189,7 @@ owners (Policy team vs Risk team).
    політик, Air Canada risk, +~$1.50/лід marnie тратимо.
 
 2. "Чому `consent-gate` окремий state, а не параметр tool'у?" →
-   Відповідь: durable pause дозволяє чекати дні, якщо клієнт пішов
+   Відповідь: у W3 durable pause дозволяє чекати дні, якщо клієнт пішов
    думати. У W3 розкриємо durability.
 
 ---

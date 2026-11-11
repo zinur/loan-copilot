@@ -93,7 +93,7 @@ tools:
       Внутрішня скорингова модель банку. Приймає bureau_score + income +
       amount + term, повертає risk_band (A/B/C/D) + PTI + suggested_rate.
       Side-effect: internal-write у risk_registry + audit event.
-      Правила: SOP-CREDIT-02 §5 (policy matrix).
+      Правила: SOP-CREDIT-02 §3.1 (policy matrix).
     attach_to: [risk-agent]
     rbac_roles: [risk_analyst, loan_officer, orchestrator]
     cost_usd: 0.05
@@ -125,16 +125,16 @@ tools:
             maximum: 60
         required: [tax_id, bureau_score, monthly_income, amount, term_months]
     mock_responses:
-      # Policy matrix (SOP-CREDIT-02 §5): bureau_score + pti thresholds
-      # mock computes:  band = f(bureau_score), pti = (amount/term*0.015)/income
+      # Policy matrix (SOP-CREDIT-02 §3.1): bureau_score + pti thresholds
+      # mock computes:  band = f(bureau_score, pti); pti = PMT/income (ануїтет, 18.5%)
       # Приклад: 1234567890 → score 720, income 35000, amount 150000, term 24
-      #   → monthly_payment ~7500, pti ~0.21, band A, rate 18.5
+      #   → monthly_payment ~7525, pti ~0.215, band B, rate 18.5
       _rule: >
-        band = "A" if bureau_score >= 700 and pti <= 0.35 else
-               "B" if bureau_score >= 620 and pti <= 0.45 else
+        band = "A" if bureau_score >= 750 and pti <= 0.35 else
+               "B" if bureau_score >= 650 and pti <= 0.45 else
                "C" if bureau_score >= 550 and pti <= 0.50 else
                "D"
-        suggested_rate = {"A": 18.5, "B": 22.0, "C": 26.5, "D": None}[band]
+        suggested_rate = {"A": 15.9, "B": 18.5, "C": 24.0, "D": None}[band]
 
 # ─────────────────────────────────────────────────────────────────────
 # Deployment notes:

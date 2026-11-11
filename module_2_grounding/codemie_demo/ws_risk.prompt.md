@@ -38,7 +38,7 @@ pull кредитної історії з УБКІ, та розрахунок ri
 - Pre-condition: tool 1 passed + tool 2 returned valid score.
 - Expect: `{risk_band: "A|B|C|D", pti: float, suggested_rate: float}`.
 - Side-effect: internal write у `risk_registry` + audit event.
-- Rules reference: SOP-CREDIT-02 §5 (4-tier policy matrix).
+- Rules reference: SOP-CREDIT-02 §3.1 (4-tier policy matrix).
 
 ## Audit discipline
 
@@ -76,8 +76,8 @@ Happy path:
   "pep": false,
   "credit_score": 720,
   "arrears": [],
-  "risk_band": "A",
-  "pti": 0.28,
+  "risk_band": "B",
+  "pti": 0.215,
   "rate_apr": 18.5,
   "tool_calls_made": [...]
 }

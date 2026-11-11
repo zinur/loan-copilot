@@ -104,13 +104,13 @@ assistants:
       ### Sole proprietor < 6 months (POL-LOAN-01 sec.4.2.1)
       If purpose=consumer and FOP registration < 6 months:
       {"eligible": false, "citations": ["[POL-LOAN-01 sec.4.2.1]"],
-       "reason": "Sole proprietor < 6 months not eligible for consumer loan. Alternative: secured deposit (SOP-CREDIT-02 sec.7.3).",
+       "reason": "Sole proprietor < 6 months not eligible for consumer loan. Alternative: secured deposit (POL-LOAN-01 sec.4.2.1).",
        "escalate_to_human": false}
 
       ### FX restriction (REG-NBU-351)
       If FX loan via Privat24 for consumer purpose:
-      {"eligible": false, "citations": ["[REG-NBU-351 sec.12.2]"],
-       "reason": "NBU Resolution 351 sec.12.2: FX consumer loans for individuals forbidden.",
+      {"eligible": false, "citations": ["[REG-NBU-351 sec.26.1]"],
+       "reason": "NBU Resolution 351 sec.26.1: FX consumer loans for individuals forbidden.",
        "escalate_to_human": false}
 
       ## Rules
@@ -124,7 +124,7 @@ assistants:
       English only.
       Example:
       {"eligible": true,
-       "citations": ["[POL-LOAN-01 sec.2.1]", "[SOP-CREDIT-02 sec.4.2]"],
+       "citations": ["[POL-LOAN-01 sec.2.1]", "[POL-LOAN-01 sec.3.1]"],
        "reason": "Client meets basic criteria (age, UA citizenship, amount within limit).",
        "escalate_to_human": false}
 
@@ -265,17 +265,17 @@ assistants:
       Call with: {tax_id, bureau_score, monthly_income, amount, term_months}
       Expect: {risk_band: "A|B|C|D", pti: float, rate_apr: float}
       Side-effect: internal write to risk_registry + audit event.
-      Rules reference: SOP-CREDIT-02 sec.5 (4-tier policy matrix).
+      Rules reference: SOP-CREDIT-02 sec.3.1 (4-tier policy matrix).
 
       ## Mock locally (for workshop without real tool)
-      band = "A" if bureau_score >= 700 and pti <= 0.35
-           = "B" if bureau_score >= 620 and pti <= 0.45
+      band = "A" if bureau_score >= 750 and pti <= 0.35
+           = "B" if bureau_score >= 650 and pti <= 0.45
            = "C" if bureau_score >= 550 and pti <= 0.50
            = "D" otherwise
 
       rate_apr = 15.9 if band=="A" else 18.5 if band=="B" else 24.0 if band=="C" else null
 
-      pti = (amount / term_months * 1.015) / monthly_income  # simplified
+      pti = PMT / monthly_income, PMT = annuity at 18.5% APR (SOP-CREDIT-02 sec.2.1)
 
       ## Rules
       - Do NOT call credit_history.pull — that's Credit Agent.
@@ -284,7 +284,7 @@ assistants:
 
       ## Output
       Return strict JSON matching output_schema. Plain English only.
-      Example: {"risk_band": "A", "pti": 0.28, "rate_apr": 18.5}
+      Example: {"risk_band": "B", "pti": 0.215, "rate_apr": 18.5}
 
       Temperature: 0.0 — numeric reasoning.
 
@@ -317,27 +317,27 @@ assistants:
       Short message to the client in UKRAINIAN. Include:
       - Decision (approve / decline / manual review) in the first sentence.
       - Loan amount, term, monthly payment estimate.
-      - Risk band and the policy reference [SOP-CREDIT-02 sec.5].
+      - Risk band and the policy reference [SOP-CREDIT-02 sec.3.1].
       - If approved: APR and a one-line next step ("підпишіть у Дії").
       - If declined / manual review: clear reason and alternative.
 
       ## Example (approve)
       Доброго дня, Маріє! Ваша заявка на кредит СХВАЛЕНА. Сума: 150 000 грн
-      на 24 міс. Орієнтовний щомісячний платіж: ~7 497 грн. Risk band: B
-      (credit score 720, PTI 0.21). Ставка: 18.5% річних згідно
-      [SOP-CREDIT-02 sec.5]. Наступний крок: підпишіть договір у застосунку
+      на 24 міс. Орієнтовний щомісячний платіж: ~7 525 грн. Risk band: B
+      (credit score 720, PTI 0.215). Ставка: 18.5% річних згідно
+      [SOP-CREDIT-02 sec.3.1]. Наступний крок: підпишіть договір у застосунку
       Дія протягом 48 годин.
 
       ## Example (decline)
       Доброго дня, Петре. На жаль, Вашу заявку ВІДХИЛЕНО. Причина:
-      недостатній кредитний скор (580 — нижче порогу 650 для запитаної
-      суми) згідно [SOP-CREDIT-02 sec.5]. Альтернатива: продукт із
+      недостатній кредитний скор (540 — нижче порогу 550 за політикою
+      кредитування) згідно [SOP-CREDIT-02 sec.3.1]. Альтернатива: продукт із
       забезпеченням депозитом — зверніться у відділення.
 
       ## Rules
       - NO JSON, NO code blocks, NO structured fields.
       - Plain narrative in UKRAINIAN only.
-      - Mention [SOP-CREDIT-02 sec.5] in-line (keep "sec." not "§").
+      - Mention [SOP-CREDIT-02 sec.3.1] in-line (keep "sec." not "§").
       - Length: 3-5 sentences.
 
       Temperature: 0.0 — deterministic phrasing.
@@ -517,7 +517,7 @@ states:
 
       Apply the policy table from your system prompt. Return a plain
       English narrative (3-5 sentences), NO JSON, NO code fences.
-      Include the citation [SOP-CREDIT-02 sec.5] in-line.
+      Include the citation [SOP-CREDIT-02 sec.3.1] in-line.
     resolve_dynamic_values_in_prompt: true
     next:
       state_id: end

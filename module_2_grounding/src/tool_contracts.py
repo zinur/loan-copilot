@@ -132,7 +132,7 @@ def credit_history_pull(
     Side-effect: external-read (PII)
     Consent Gate: обов'язкова наявність валідного consent_id
     Role required: loan_officer / credit_analyst
-    Cost: ~$1.50 (UBKI · UAH 50–80 за lookup)
+    Cost: ~$1.50 за lookup (УБКІ · UAH 50–80; модельне припущення). Увага: mock нижче повертає cost_usd=8.50
     """
     # 1. In-code RBAC перевірка
     if caller_role not in {"loan_officer", "credit_analyst", "orchestrator"}:
@@ -144,7 +144,7 @@ def credit_history_pull(
         _record_audit("credit_history.pull", caller_role, "external-read", 0.0, "blocked_no_consent", {"tax_id": tax_id})
         raise ConsentRequiredException(
             f"Запит кредитної історії для tax_id={tax_id} заблоковано: відсутня обов'язкова згода позичальника (consent_id). "
-            "Штраф регулятора за порушення банківської таємниці становить до 20 млн грн."
+            "Ризик санкцій регулятора за порушення банківської таємниці (ст. 60 ЗУ «Про банки і банківську діяльність»)."
         )
 
     # Mock скорингові дані позичальників

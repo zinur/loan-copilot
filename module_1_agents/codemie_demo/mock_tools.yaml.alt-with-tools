@@ -7,7 +7,7 @@
 #
 # Цей файл збережений як reference-варіант: що робити, коли мокнуті
 # lookup table'и перестають бути достатніми (production, інтеграція
-# з реальним bureau API, MCP-server). Приклад:
+# з реальним API бюро кредитних історій (УБКІ), MCP-server). Приклад:
 #
 #   1. Створи MCP-server (або OpenAI function endpoint), що приймає tax_id
 #      і повертає mock_responses нижче.
@@ -46,11 +46,11 @@ tools:
   - name: mock_credit_history
     description: >
       Mock credit history pull — повертає нормалізований скор 300–850
-      з mock бюро. Жодні зовнішні API не викликаються.
+      з mock бюро кредитних історій (УБКІ). Жодні зовнішні API не викликаються.
     attach_to: [credithistoryagent]
     openai_function_schema:
       name: mock_credit_history
-      description: Pull credit history score from mock bureau
+      description: Pull credit history score from mock bureau (УБКІ)
       parameters:
         type: object
         properties:
@@ -61,7 +61,7 @@ tools:
     mock_responses:
       # synced with common/scenario_data MOCK_CREDIT_SCORES
       "1234567890": {score: 720, status: ok}   # happy path → approve
-      "9876543210": {score: 580, status: ok}   # poor → decline (rule 5, < 500 threshold у production)
+      "9876543210": {score: 580, status: ok}   # poor → сіра зона (≥500 → underwriter; rule 5 діє лише для < 500)
       "5555555555": {score: 650, status: ok}   # borderline (не досягне якщо KYC fail)
       "_default":   {score: 650, status: ok}
 
@@ -75,7 +75,7 @@ tools:
 # | Audit log               | Prompt + LLM output     | Tool call з inputs/outputs |
 # | Prompt-injection ризик  | Низький (table в prompt)| Нижчий (tool returns truth)|
 # | Робочий для workshop    | ✅ live-демо            | Переускладнення            |
-# | Робочий для production  | ❌ (mock-data назавжди)  | ✅ підключається до bureau  |
+# | Робочий для production  | ❌ (mock-data назавжди)  | ✅ підключається до УБКІ    |
 #
-# Для М1 workshop'у — inline. У М2 (Tools & RAG) ми це проапгрейдимо
+# Для М1 workshop'у — inline. У W2 (Grounding + Tools) ми це проапгрейдимо
 # до реальних tools + MCP server.

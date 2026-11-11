@@ -14,7 +14,7 @@
 | [`demo_payloads.md`](./demo_payloads.md) | 4 сценарії для демо (happy / FOP refusal / consent block / sanctions block) + bonus prompt-injection |
 | [`demo_script.md`](./demo_script.md) | 10-хв сценарій живого показу |
 | [`tool_contracts.yaml.alt`](./tool_contracts.yaml.alt) | **Alternative:** OpenAI function schemas для 3 tools + mock responses (production: swap на MCP server/UBKI client) |
-| [`grounded_copilot_workflow.yaml.alt-sequential`](./grounded_copilot_workflow.yaml.alt-sequential) | **Alternative:** deterministic Sequential workflow з `interrupt_before` на Consent Gate (для NBU-audited production) |
+| [`grounded_copilot_workflow.yaml.alt-sequential`](./grounded_copilot_workflow.yaml.alt-sequential) | **Alternative:** deterministic Sequential workflow з Consent Gate як demo verifier (reference для audited production; справжній `interrupt_before` — W3) |
 | [`gateway_config.yaml.alt`](./gateway_config.yaml.alt) | **Reference:** LLM Gateway config (DIAL on-prem / Azure OpenAI EU, PII masking, budgets, Langfuse) |
 
 ## Що додаємо у W2 vs W1
@@ -23,7 +23,7 @@
 |---|---|---|
 | **Grounding** | ❌ | ✅ Hybrid RAG на 3 документах (POL-LOAN-01, SOP-CREDIT-02, REG-NBU-351) з citation discipline |
 | **Real tools** | ❌ (lookup tables у prompt) | ✅ 3 tools: `kyc.lookup`, `credit_history.pull` (з consent), `risk.score` |
-| **Consent Gate** | ❌ | ✅ `interrupt_before: true` + tool-level enforcement |
+| **Consent Gate** | ❌ | ✅ demo verifier (`consent-gate-agent`) + tool-level enforcement у Python; справжній `interrupt_before` — W3 |
 | **LLM Gateway** | ⚠️ default (public) | ✅ DIAL on-prem / Azure EU, PII masking, budgets |
 | **Guardrails** | ❌ | ✅ Input (injection), DLP, Output (toxicity, price commitment) |
 
@@ -44,8 +44,8 @@
 | Критерій | Option B · `assistant_ids` | Option A · Sequential workflow |
 |---|---|---|
 | Routing | LLM parent (handoff tools auto-generated) | `next.condition.expression` deterministic |
-| HITL | Клієнт пише у chat | `interrupt_before: true` → UI pause |
-| Deployment | 6 assistants у UI, 0 YAML | 6 assistants + 1 workflow YAML |
+| HITL | Клієнт пише у chat | W2: demo verifier; справжній `interrupt_before` → UI pause — W3 |
+| Deployment | assistants у UI, 0 YAML | assistants + 1 workflow YAML |
 | Audit | LLM reasoning + handoff logs | Node-by-node execution log + state transitions |
 | Коли брати | Live demo, exploratory flows | NBU-audited production з durable waits (W3) |
 

@@ -33,12 +33,14 @@ schemas формують контракти між ними.
 | 2 | **KYC** | Identity check, sanctions, PEP | Compliance officer |
 | 3 | **CreditHistory** | Credit history pull та нормалізація | Credit analyst (data) |
 | 4 | **Underwriter** | Policy check, PTI calc, risk tier | Underwriter |
-| 5 | **Pricing** | Visualization ставки за tier | Pricing manager |
+| 5 | **Pricing** | Розрахунок ставки та графіка платежів за tier | Pricing manager |
 | 6 | **Contract** | Генерація контракту за template | Loan ops |
 | 7 | **Compliance** | Final review перед e-sign | Compliance (sign-off) |
 
-**Над ними — Orchestrator.** Не agent у строгому сенсі, а state machine
-з LLM-powered маршрутизацією (W3 поглибить).
+**Над ними — Orchestrator.** Не agent у строгому сенсі, а state machine,
+що володіє станом заявки. Routing — або deterministic switch (preferred
+для банку; так у Python-версії), або LLM з `temperature=0` (так у
+CodeMie live-демо). Детальніше про workflow-рівень — у W3.
 
 ### Supervisor vs delegate pattern
 
@@ -150,7 +152,7 @@ immutable-ish shared state, яким володіє Orchestrator. Agent'и
 ## System prompts по агентах
 
 Schemas вище — це «what» (контракти). Сама поведінка agent'а — «how» —
-живе у **system prompt**. Нижче повні версії для всіх 5 agent'ів, які
+живе у **system prompt**. Нижче повні версії для всіх 5 assistant'ів (Orchestrator + 4 specialists), які
 ми деплоїмо в CodeMie під час live-демо. Окремі файли та сценарій
 показу — у [`codemie_demo/`](./codemie_demo/).
 
@@ -299,7 +301,7 @@ Mock lookup table (synced with common/scenario_data MOCK_KYC_RESULTS):
 
 Mock lookup table (synced with common/scenario_data MOCK_CREDIT_SCORES):
   1234567890 → 720  (good      → approve candidate)
-  9876543210 → 580  (poor      → decline on threshold)
+  9876543210 → 580  (poor      → сіра зона: ≥500, іде до underwriter)
   5555555555 → 650  (sanctions, не досягнеться)
   (інший 10-значний) → 650 (borderline default)
 
@@ -337,7 +339,7 @@ term_months, credit_score.
   monthly_payment = amount * (r * (1+r)^n) / ((1+r)^n - 1)
   PTI = monthly_payment / monthly_income
 
-Політика (по порядку):
+Політика (по порядку; пороги й ставки — ілюстративні, модельне припущення):
 1. score >= 750 AND PTI <= 0.35 → approve, rate_apr=15.9%
 2. score >= 650 AND PTI <= 0.45 → approve, rate_apr=18.5%
 3. score >= 550 AND PTI <= 0.50 → manual_review, rate_apr=24.0%

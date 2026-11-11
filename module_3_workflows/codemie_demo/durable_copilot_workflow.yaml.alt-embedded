@@ -40,10 +40,11 @@
 
 name: loan-copilot-durable-w3-embedded
 description: >
-  Durable Loan Copilot (W3) with embedded assistants: 11 states, 3
-  real durable waits (24h/7d/signed), 2 conditional HITL gates, 1
-  evaluator pre-write gate, Saga compensation on cancellation. All
-  system prompts inline.
+  Durable Loan Copilot (W3) with embedded assistants: 12 business nodes
+  (+ Saga compensation branch; this alt variant adds send_*/webhook_*
+  helper states), 3 real durable waits (docs 48h / offer 7d / sign 7d),
+  2 conditional HITL gates, 1 evaluator pre-write gate, Saga compensation
+  on cancellation. All system prompts inline.
 mode: Sequential
 
 # ----------------------------------------------------------------------------
@@ -294,8 +295,9 @@ assistants:
       - notify.sms(tax_id, text) — client notification.
 
       ## Rollback order
-      1. If limit_reserved → limit.release first (highest priority).
-      2. If contract_id present → contract.cancel.
+      Saga compensations run in REVERSE order of the forward actions.
+      1. If contract_id present → contract.cancel first.
+      2. If limit_reserved → limit.release second.
       3. audit.write("limit_released_rollback", reason).
       4. notify.sms with UA text: "Заявку скасовано, резерв знято."
 
@@ -304,7 +306,7 @@ assistants:
       - Return final status flags, not raw tool responses.
 
 # ----------------------------------------------------------------------------
-# STATES — 11-node durable FSM
+# STATES — 12-node durable FSM (+ compensation branch, + send_*/webhook_* helpers)
 # ----------------------------------------------------------------------------
 states:
 
@@ -754,7 +756,8 @@ states:
 
       IDEMPOTENCY (CRITICAL):
       Webhook may arrive 2+ times (network, Diia retry).
-      Composite key: SHA256({{tax_id}}::{{contract_id}}::{{event_id}}).
+      Composite key: SHA256({{application_id}}::sign_awaiting::{{event_id}})
+      (canonical: application_id + node + event_id).
       If key already in DB `processed_events` → return {disbursed: true}
       WITHOUT calling disburse again.
 
@@ -785,8 +788,9 @@ states:
       Execute compensating actions for cancellation / rejection /
       verify-fail:
 
-      1. If limit_reserved == true → call limit.release(contract_id).
-      2. If contract_id not null → call contract.cancel(contract_id).
+      (reverse order: cancel_contract, then release_limit)
+      1. If contract_id not null → call contract.cancel(contract_id).
+      2. If limit_reserved == true → call limit.release(contract_id).
       3. Write audit event `limit_released_rollback` with reason.
       4. Notify client (SMS, UA text): "Заявку скасовано, резерв знято."
 
@@ -844,6 +848,9 @@ enable_summarization_node: false
 #    - analyst_review reject → compensation
 #    - verify_before_send fail → compensation
 #    - offer reject / expire → compensation
+#    (+ sign_awaiting expire). HITL safe default: no human answer within
+#    SLA (analyst 2h / committee 24h) → hold/escalate or decline by
+#    policy, NEVER auto-approve.
 #    All route to the same compensation-state (DRY).
 #
 # 4. Retry policies — tool-calling states only (docs-processing,

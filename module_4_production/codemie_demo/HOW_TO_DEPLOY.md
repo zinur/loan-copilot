@@ -24,7 +24,7 @@
 | Поле | Значення |
 |------|----------|
 | Name | `golden-qa-ds` |
-| **Description** | `Golden Set 20 cases для автоматичної оцінки Loan Copilot: 10 Eligibility (POL/SOP/REG refusals), 5 Risk (band A/B/C/D), 3 KYC (sanctions/PEP/docs), 2 Adversarial (prompt injection + PII leak attempt). Структура case: {case_id, category, input_payload, expected_decision, expected_citations}.` |
+| **Description** | `Golden Set 20 cases для автоматичної оцінки Loan Copilot: 10 Eligibility (POL/SOP/REG refusals), 5 Risk (band A/B/C/D), 3 KYC (sanctions/PEP/docs), 2 Adversarial (prompt injection + PII leak attempt). Структура рядка golden_qa.jsonl: {id, category, question, expected_verdict, required_citations, ground_truth}.` |
 | **Type** | **`Knowledge Base File`** (internal: `knowledge_base_file`) |
 | **Embedding model** | `text-embedding-ada-002` (Ada · 1536-dim) |
 | Chunk size | 1024 (один case = один chunk) |
@@ -57,7 +57,7 @@
 | `bias-detector-agent` | inline (bias_detector section) | fast | 0.0 | (none, deterministic reasoning) |
 | `eval-aggregator-agent` | inline (aggregator section) | fast | 0.0 | (none) |
 
-**КРИТИЧНО для judge:** different LLM family vs agent-under-test.
+**КРИТИЧНО для judge:** different LLM family (вендор) vs agent-under-test; калібрування судді на ~50 human-rated кейсах.
 Якщо prod workflow на Azure OpenAI → judge на Anthropic Claude (via DIAL).
 Інакше self-enhancement bias.
 
@@ -170,8 +170,8 @@ CodeMie має **project budgets** (verified у `repository/budget_repository.py
 + `project_spend_tracking_repository.py`).
 
 У CodeMie UI → **Admin → Projects → `loan-copilot` → Budget**:
-- Daily cap: `$8000` (14k × $0.47 + 20% buffer).
-- Monthly cap: `$240k`.
+- Daily cap: `$8000` (14k × $0.47 ≈ $6.6k + ~20% buffer; модельне припущення).
+- Monthly cap: `$240k` (~$196k + 20% buffer).
 - Alerts: thresholds configurable per deployment.
 
 > Точні UI пути можуть відрізнятися між tenant versions. Alert
@@ -185,7 +185,7 @@ CodeMie має **project budgets** (verified у `repository/budget_repository.py
 - [ ] `golden-qa-ds` datasource (Knowledge Base File) з 20 cases готовий
 - [ ] W3 workflow `loan-copilot-durable-w3-embedded` deployed та проходить smoke test
 - [ ] W4 eval workflow `loan-copilot-eval-w4-embedded` deployed
-- [ ] (Optional) Judge model з different provider ніж agent-under-test
+- [ ] Judge model з іншого вендорного сімейства, ніж agent-under-test
 - [ ] CI integration у GitHub Actions / GitLab (test з dummy PR)
 - [ ] Langfuse env vars налаштовані на CodeMie deployment (SRE-side)
 - [ ] Scheduled nightly run cron trigger створений

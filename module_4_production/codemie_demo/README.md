@@ -34,7 +34,7 @@ field:
 | **[`eval_workflow.yaml.alt-embedded`](./eval_workflow.yaml.alt-embedded)** | **Основний артефакт** (recommended) — all 5 assistants inline, native sub-workflow via `workflow_id`, English JSON internals |
 | [`eval_workflow.yaml.alt-sequential`](./eval_workflow.yaml.alt-sequential) | Legacy reference-based variant (external assistant_ids, custom tool for sub-workflow) |
 | [`ws_judge.prompt.md`](./ws_judge.prompt.md) | System prompt для LLM-as-Judge (5-dim rubric + debiasing techniques) |
-| [`demo_payloads.md`](./demo_payloads.md) | 4 scenarios: nightly PASS run, BLOCKED regression, case drill-down, adversarial check |
+| [`demo_payloads.md`](./demo_payloads.md) | 5 scenarios: nightly PASS run, BLOCKED regression, case drill-down, adversarial check, (optional) FinOps dashboard |
 | [`demo_script.md`](./demo_script.md) | 15-хв сценарій живого показу |
 
 ## 6-state eval workflow map
@@ -55,12 +55,14 @@ field:
 
 ## 7 CI gate criteria (ВСІ має бути true для PASS)
 
+> Це розширений gate для CodeMie-демо. Мінімальний gate за презентацією (і в Python-раннері `src/run_eval.py`): avg Faithfulness ≥ 0.95, Answer Relevance ≥ 0.90, витоків PII = 0, успішних ін'єкцій = 0 (проміжна ціль W2 для Faithfulness — ≥ 0.85). Пороги Decision accuracy / Judge score / latency / cost — модельні припущення воркшопу.
+
 | # | Criterion | Target |
 |---|---|---|
 | 1 | Avg faithfulness (RAG cases) | ≥ 0.95 |
 | 2 | Avg context_recall (RAG cases) | ≥ 0.92 |
 | 3 | Adversarial pass rate | 100% (2/2) |
-| 4 | Decision accuracy | ≥ 95% (19/20) |
+| 4 | Decision accuracy | ≥ 92% (на 20 кейсах = 19/20) |
 | 5 | Avg LLM-judge overall score | ≥ 4.0 (з 5) |
 | 6 | P95 latency | < 8s |
 | 7 | Total run cost | < $5 |
@@ -70,7 +72,7 @@ field:
 - [ ] W3 workflow `loan-copilot-durable-w3-embedded` deployed та проходить smoke test
 - [ ] Datasource `golden-qa-ds` (Knowledge Base File) з 20 cases
 - [ ] W4 workflow `loan-copilot-eval-w4-embedded` deployed (all 5 assistants inline)
-- [ ] (Optional) Judge model з different provider ніж agent-under-test
+- [ ] Judge model з іншого вендорного сімейства, ніж agent-under-test (у demo YAML усі assistants на gpt-4o-mini — тобто self-enhancement risk очікуваний; у production — обов'язково інший вендор, калібрування на ~50 human-rated кейсах)
 - [ ] CI integration у GitHub Actions / GitLab (test з dummy PR)
 - [ ] Langfuse env vars налаштовані на CodeMie deployment (SRE-side)
 - [ ] Scheduled nightly run cron trigger створений
@@ -86,7 +88,7 @@ field:
    (different provider).
 
 3. **RAGAS != LLM reasoning**. Faithfulness — математична формула
-   |verified| / |total|. Deterministic. Calibrated proti human-rated.
+   |verified| / |total|. Deterministic. Calibrated проти ~50 human-rated cases.
 
 4. **CI gate = binary decision**. PASS або BLOCKED. 7 criteria все
    true. Нема "approve with warning" — merge блокується якщо хоч одна
@@ -109,6 +111,6 @@ field:
 
 - Домашнє завдання: [`../02-exercise.md`](../02-exercise.md) — Python
   еквівалент eval runner + Langfuse docker setup.
-- CI/CD Eval slide у deck: slide #41.
+- Слайд у deck: «CI/CD Eval & Langfuse».
 - W3 CodeMie demo (prod workflow що оцінюємо): [`../../module_3_workflows/codemie_demo/`](../../module_3_workflows/codemie_demo/).
 - Golden Set JSONL: `../data/golden_qa.jsonl`.

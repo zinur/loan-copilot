@@ -8,7 +8,7 @@
 | Хв | Що показуємо | Вкладка |
 |---|---|---|
 | 0:00–1:00 | Чому Sequential workflow, не chat | Workflows list |
-| 1:00–3:00 | YAML walkthrough (11 states, 3 waits, 2 HITL, 1 evaluator, 1 compensation) | Workflow edit |
+| 1:00–3:00 | YAML walkthrough (12 вузлів, 3 waits, 2 HITL, 1 evaluator + compensation-state) | Workflow edit |
 | 3:00–8:00 | **Scenario 1** · survive `kill -9` + 3 resumes | Executions + terminal |
 | 8:00–11:00 | **Scenario 3** · Saga rollback на client reject | Executions |
 | 11:00–13:00 | **Scenario 4** · Pre-write gate blocks bad contract | Executions + Langfuse |
@@ -56,9 +56,9 @@ production workflows (deploy pipelines, test generators), не тільки
    > Якщо contract text каже 22% а underwriter 18.5% — БЛОК."
 
 5. **State X `compensation-state`** — Saga.
-   > "Викликається з 4 кроків: docs timeout, analyst reject, verify fail,
-   > offer reject/expire. Усі ведуть сюди — DRY. Один state робить
-   > rollback: limit.release + contract.cancel + notify."
+   > "Викликається з кількох кроків: docs timeout, analyst reject, verify fail,
+   > offer reject/expire, sign expire. Усі ведуть сюди — DRY. Один state робить
+   > rollback у зворотному порядку: contract.cancel, потім limit.release, потім notify."
 
 ---
 
@@ -140,8 +140,8 @@ curl -X POST .../resume \
 > завершеного workflow. (2) У production ще й tool-level: Python wrapper
 > `disburse` перевіряє composite key у БД перед money movement.
 >
-> 150 000 UAH виплачені рівно один раз. При 14k заявках/день — це
-> різниця між банком і судом з НБУ."
+> 150 000 UAH виплачені рівно один раз (ключ ідемпотентності = SHA256(application_id + node + event_id)).
+> При 14k заявках/день (модельний масштаб) це різниця між стабільним процесом і інцидентом."
 
 ---
 
@@ -163,16 +163,16 @@ curl -X POST .../resume \
 
 **У compensation-state logs:**
 ```
-[compensation-agent] tool.limit.release(contract_id=LC-...) → ok
 [compensation-agent] tool.contract.cancel(contract_id=LC-...) → ok
+[compensation-agent] tool.limit.release(contract_id=LC-...) → ok
 [compensation-agent] tool.notify.send(template=offer_rejected, channel=sms+email) → ok
-[audit] events written: limit_released_rollback, contract_cancelled_rollback, client_notified
+[audit] events written: contract_cancelled_rollback, limit_released_rollback, client_notified
 ```
 
 **Що говориш:**
 > "150k UAH резерву знято. Договір анульовано. Клієнту SMS. Усе за ~2
 > секунди. У легасі flow це людина вручну знімала резерв з Excel'ю —
-> 30 хвилин роботи операційника на кожну відмову.
+> ~30 хвилин роботи операційника на кожну відмову (ілюстративно).
 >
 > 2PC тут не працює — у нас 3 різні бек-енди (ліміт, document system,
 > SMS gateway). Saga з компенсуючими діями — промисловий pattern."
@@ -209,7 +209,7 @@ FAIL**:
 }
 ```
 
-→ compensation-state (limit.release + contract.cancel + notify).
+→ compensation-state (contract.cancel, потім limit.release, потім notify).
 
 ### Langfuse trace
 
@@ -219,17 +219,17 @@ FAIL**:
 - Audit events: `rate_mismatch_detected` → engineering P0 ticket.
 
 **Що говориш:**
-> "Це saved an Air Canada case. Underwriter calculated 18.5%, Jinja template
+> "Це ілюстративна аналогія з кейсом Air Canada. Underwriter calculated 18.5%, Jinja template
 > had a bug and rendered 22% у договорі. Якби не pre-write gate — клієнт
 > підписав би договір з розбіжністю між ставкою, яку йому сказали, та
 > ставкою у документі.
 >
-> Трибунал Канади оштрафував Air Canada на подібному — bot committed
+> Трибунал Канади визнав Air Canada відповідальною за слова чат-бота — bot committed
 > компанію на політику, яку компанія не має. У нас — deterministic gate
 > ловить mismatch ДО того, як контент потрапив до клієнта.
 >
 > Engineering fix bug у template, в клієнта — SMS 'технічна затримка'.
-> Зеро репутаційних втрат."
+> Мінімальні репутаційні втрати."
 
 ---
 
@@ -244,7 +244,7 @@ CodeMie підтримує обидва, але для банк workflows → Po
 
 **Q: Що якщо webhook від Дія.Підпис не приходить (їх прод впав)?**
 A: `max_wait_duration: 604800` (7 днів) на `sign-awaiting-state`.
-Після 7d → auto-transition у `compensation-state`. Клієнт отримує
+Після 7d → auto-transition у `compensation-state` (limit звільняється). Клієнт отримує
 SMS "термін оферу закінчився, оформіть новий", limit звільняється.
 
 **Q: Чому `verify-before-send` окремий state, а не частина
@@ -257,7 +257,7 @@ deterministic (не LLM-reasoned).
 
 **Q: Scaleability — 14k заявок/день, скільки pod'ів треба?**
 A: Durable waits не займають pod resources (state у БД). Only
-active LLM calls — ~2-3 pods для 14k/day peak. Пояснимо у W4 FinOps.
+active LLM calls — ~2-3 pods для 14k/day peak (модельне припущення). Пояснимо у W4 FinOps.
 
 ---
 

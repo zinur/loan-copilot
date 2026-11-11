@@ -24,12 +24,12 @@
 # W2 додає поверх W1:
 #   • eligibility-state — Hybrid RAG на POL/SOP/REG датасорсі з citations
 #   • kyc-state         — real tool call (kyc.lookup replace mock)
-#   • consent-gate      — explicit interrupt_before для recording consent_id
+#   • consent-gate      — demo verifier: явна згода → consent_id (справжній interrupt_before — W3)
 #   • credit-history-state — real tool call (credit_history.pull з consent_id)
 #   • risk-state        — risk.score tool (internal write + audit)
 #
 # END-STATE: Loan Copilot більше не галюцинує політики банку (всі
-# відповіді з obov'язковою цитатою [POL-LOAN-* §X]), UBKI недоступний
+# відповіді з обов'язковою цитатою [POL-LOAN-* §X]), UBKI недоступний
 # без consent_id, PII маскується на gateway.
 #
 # ПЕРЕДУМОВИ (CodeMie UI):
@@ -293,9 +293,10 @@ enable_summarization_node: false
 # ----------------------------------------------------------------------------
 # NOTES
 # ----------------------------------------------------------------------------
-# 1. `interrupt_before: true` на consent-gate — коректний HITL pattern у
-#    CodeMie 2.59+ (замінив deprecated `wait_for_user_confirmation`).
-#    Workflow паузиться у UI до того, як операційник внесе consent_id.
+# 1. У цьому W2-варіанті consent-gate — demo verifier (без паузи). Для
+#    справжнього HITL у CodeMie 2.59+ використовується `interrupt_before: true`
+#    (замінив deprecated `wait_for_user_confirmation`): workflow паузиться
+#    у UI, доки операційник не внесе consent_id — це вже W3 (durable waits).
 #
 # 2. Для production — свопнути `kyc.lookup` / `credit_history.pull` /
 #    `risk.score` tool_id на реальні MCP server endpoints або HTTP

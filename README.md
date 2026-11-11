@@ -1,19 +1,19 @@
 # Loan Copilot · Workshop code
 
-Repository для 4-тижневого воркшопу **AI-архітектор у фінансах**. Супроводжує deck
-`CodeMie_Loan_Copilot_Workshop_UA.pptx`.
+Repository для 4-тижневого воркшопу **AI-архітектор у фінансах**. Супроводжує слайд-deck воркшопу (`deck.html`).
 
 ## Що ви побудуєте
 
-Chat-first copilot для consumer loan: `intake → KYC → credit history → decision →
-contract → e-sign`. Має пройти аудит НБУ та EU AI Act, вижити нічний
-трафік, не галюцинувати ставки.
+Chat-first copilot для consumer loan: `intake → KYC → credit history (УБКІ) → decision →
+contract → e-sign`. Проєктується з орієнтиром на вимоги НБУ та EU AI Act (для українського банку Акт — орієнтир, а не пряма
+вимога; кредитний скоринг належить до high-risk, Annex III 5(b)), має витримувати нічний трафік
+і не галюцинувати ставки.
 
 ## Модулі
 
 | Модуль | Тема | Коли | Статус |
 |--------|------|------|--------|
-| [module_1_agents](./module_1_agents/README.md) | Agent topology · orchestrator + 7 specialists | Webinar 1 | ✓ |
+| [module_1_agents](./module_1_agents/README.md) | Agent topology · orchestrator + specialists (у коді W1 — 4 workers) | Webinar 1 | ✓ |
 | [module_2_grounding](./module_2_grounding/README.md) | RAG · tools · LLM gateway | Webinar 2 | ✓ |
 | [module_3_workflows](./module_3_workflows/README.md) | Durable workflows · HITL · pause/resume | Webinar 3 | ✓ |
 | [module_4_production](./module_4_production/README.md) | Eval · observability · cost · security | Webinar 4 | ✓ |
@@ -49,8 +49,8 @@ cp .env.example .env
 ### 3. Запуск прикладів
 
 ```bash
-python -m module-1-agents.src.intake_agent          # пряме виконання
-python -m module-1-agents.src.orchestrator           # full flow
+python -m module_1_agents.src.intake_agent          # пряме виконання
+python -m module_1_agents.src.orchestrator           # full flow
 ```
 
 Усі приклади **самодостатні** — не потребують бази даних чи
@@ -67,7 +67,7 @@ loan-copilot/
 ├── common/                         <- shared code між модулями
 │   ├── schemas.py                  <- Pydantic моделі домену
 │   ├── llm_gateway.py              <- тонкий wrapper
-│   └── scenario_data/              <- mock klient, credit history, SOP (Standard Operating Procedure)
+│   └── scenario_data/              <- mock клієнт, кредитна історія (УБКІ), SOP (Standard Operating Procedure)
 ├── module_1_agents/
 │   ├── README.md
 │   ├── 01-why-split.md

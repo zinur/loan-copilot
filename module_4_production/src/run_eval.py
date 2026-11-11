@@ -187,7 +187,7 @@ def run_pipeline_eval() -> EvalSuiteSummary:
 
 def display_finops_projections():
     """Відображення таблиці FinOps-моделі на скейлі."""
-    table = Table(title="[bold white]FinOps Funnel Economics · Масштабування від PoC до 10k заявок/день[/bold white]")
+    table = Table(title="[bold white]FinOps Funnel Economics · Масштабування від PoC до PB scale 14k заявок/день (модельні припущення)[/bold white]")
     table.add_column("Масштаб", style="cyan")
     table.add_column("Заявок/день", justify="right")
     table.add_column("Собівартість AI/кейс", justify="right")
@@ -196,7 +196,7 @@ def display_finops_projections():
     table.add_column("Традиційний банк (ручний)", justify="right")
     table.add_column("Чиста економія/міс", justify="right", style="bold green")
 
-    for scale, name in [(100, "1 · PoC стенд"), (1_000, "2 · Пілотний запуск"), (10_000, "3 · Повний продакшн")]:
+    for scale, name in [(100, "1 · PoC стенд"), (1_000, "2 · Пілотний запуск"), (10_000, "3 · Повний продакшн"), (14_000, "4 · PB scale (consumer)")]:
         proj = project_funnel_economics(scale)
         table.add_row(
             name,

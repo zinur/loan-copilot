@@ -11,7 +11,7 @@
 | 0:00–1:00 | Чому Eval окремий workflow, не ad-hoc | Workflows list |
 | 1:00–3:00 | Golden Set structure (20 cases) + eval workflow YAML | Datasources + Workflow edit |
 | 3:00–8:00 | **Scenario 1** · nightly run full Golden Set | Executions tab |
-| 8:00–11:00 | **Scenario 2** · case drill-down (hallucination caught) | Case details + Langfuse |
+| 8:00–11:00 | **Scenario 3** · case drill-down (hallucination caught) | Case details + Langfuse |
 | 11:00–13:00 | **Scenario 4** · adversarial PII leak + injection detection | Executions |
 | 13:00–15:00 | **Scenario 5** · FinOps dashboard walkthrough + Q&A | Admin Billing |
 
@@ -26,7 +26,7 @@
 >
 > Eval — не 'тест кнопочки'. Це CI gate, що блокує PR, якщо faithfulness
 > впала на 0.03. Це nightly scheduled run, що детектить drift. Це
-> артефакт, який ви показуєте NBU audit — '20 cases, 95% accuracy,
+> артефакт, який ви показуєте аудитору чи регулятору — '20 cases (стартовий набір), метрики,
 > калібрований LLM-judge, артефакт за кожен run'.
 >
 > Ми робимо його OKREMЫМ workflow'ом, тому що eval має свою retention,
@@ -61,10 +61,10 @@ Scroll через states, акцент на:
    > custom tool не потрібно."
 
 2. **judge-case** → scores 5-dim rubric.
-   > "LLM-as-Judge — у production Anthropic Claude 3.5 Sonnet (DIAL
-   > multi-provider). Prod workflow — Azure GPT-4.1. Different family
-   > → self-enhancement bias prevented. Для workshop demo обидва на
-   > одному provider — flag у reasoning output."
+   > "LLM-as-Judge — у production модель з ІНШОГО вендорного сімейства, ніж
+   > агент (напр., judge=Claude, prod workflow=GPT; DIAL multi-provider) →
+   > self-enhancement bias знижено. Суддя калібрується на ~50 human-rated
+   > кейсах. Для workshop demo обидва на одному provider — flag у reasoning output."
 
 3. **ragas-case** → math-based metrics.
    > "RAGAS — не LLM reasoning, це математичні формули. Faithfulness =
@@ -77,7 +77,7 @@ Scroll через states, акцент на:
    > `detect_pii_leak` + `detect_injection_success`."
 
 5. **aggregate-results** → CI gate decision.
-   > "Pass/Blocked binary. 7 criteria усі має бути true. Якщо хоч один
+   > "Pass/Blocked binary. 7 перевірок gate (не плутати з 7 родинами метрик зі слайдів), усі мають бути true. Якщо хоч один
    > fail — BLOCKED → merge заблокований."
 
 ---
@@ -128,17 +128,17 @@ demo-live-2026-10-28
 ```
 
 **Акцент:**
-> "Cost — $1.24 на 20 cases. При nightly runs = ~$37/міс. Проти
-> ризику випустити hallucination у production з штрафом НБУ — найкращий
+> "Cost — $1.24 на 20 cases (ілюстративно). При nightly runs = ~$37/міс. Проти
+> ризику випустити hallucination у production — найкращий
 > ROI в курсі.
 >
-> Artifact (JSONL) — 7-year retention. Коли NBU прийде — відкриваєш
-> архів, показуєш, що для кожного release у вас був eval з 20 cases,
-> метриками, judge reasoning."
+> Artifact (JSONL) — зберігається згідно з політикою retention банку (строк
+> визначає Compliance). Коли прийде аудитор — відкриваєш архів, показуєш,
+> що для кожного release у вас був eval з 20 cases, метриками, judge reasoning."
 
 ---
 
-## 8:00–11:00 · Scenario 2 · case drill-down
+## 8:00–11:00 · Scenario 3 · case drill-down
 
 ### Setup
 
@@ -170,23 +170,23 @@ expected_decision`.
 ├── intake-state     (OK)
 ├── eligibility-state
 │   ├── rag.search  (OK, 4 chunks retrieved including POL-LOAN-01 §4.2.1)
-│   └── llm.call    (⚠️ generated "мінімум стаж 12 міс" — HALLUCINATION)
+│   └── llm.call    (⚠️ generated "мінімум 3 міс" — HALLUCINATION)
 ├── kyc-state       (continued despite eligibility error)
 ├── ...
 └── decision: approve (WRONG — should be decline)
 ```
 
 **Що говориш:**
-> "Hallucination. Retrieved chunk говорить '6 months', LLM написав
-> '12 months'. Prod workflow все одно продовжував до approve, бо
+> "Hallucination. Retrieved chunk говорить '6 міс (база) / 12 міс (беззаставний > 100k)',
+> LLM написав '3 міс'. Prod workflow все одно продовжував до approve, бо
 > eligibility output сказав `eligible=true`.
 >
-> Якби не eval — цей клієнт пройшов би approval з 50k UAH. Якщо через
+> Якби не eval — цей клієнт (ФОП 4 міс., 150k UAH) пройшов би approval. Якщо через
 > тиждень він подав скаргу у НБУ — Air Canada case у UA.
 >
 > **Фікс:** додати до eligibility-agent system prompt 'ЦИТУЙ ТОЧНИЙ §
-> номер, не узагальнюй terms. Якщо chunks говорять `6 months` — пиши
-> `6 months`, не `12`'. Re-run eval → очікуємо faithfulness recovery
+> номер, не узагальнюй terms. Якщо chunks говорять `12 months` — пиши
+> `12 months`, не `3`'. Re-run eval → очікуємо faithfulness recovery
 > до > 0.95."
 
 ---
@@ -197,7 +197,7 @@ expected_decision`.
 
 У summary: `adversarial_pass_count: 2`. Клікаємо на ADV-001.
 
-### Payload (prompt injection)
+### Payload (prompt injection; ілюстративний payload, не з golden_qa.jsonl)
 
 ```json
 {
@@ -250,11 +250,11 @@ expected_decision`.
 може відрізнятися між tenant versions).
 
 **Графіки:**
-- **Cost per case (last 7 days):** avg $0.47 стабільно.
+- **Cost per case (last 7 days):** avg ~$0.47 (модельне припущення).
 - **Incremental AI (LLM only):** $0.01 — те, що ДОДАЄТЬСЯ до legacy OpEx.
-- **Daily spend:** avg $6.6k на 14k заявок.
-- **Projected monthly:** ~$200k.
-- **Budget cap:** $240k/міс (20% buffer) → 83% utilization.
+- **Daily spend:** ~$6.5k на 14k заявок.
+- **Projected monthly:** ~$196k.
+- **Budget cap:** $240k/міс (~20% buffer) → ~82% utilization.
 
 **Alerts panel:**
 - `cost_per_case > $0.60` → Slack `#ai-finops`.
@@ -263,8 +263,8 @@ expected_decision`.
 
 **Акцент:**
 > "Це artifact, що ви показуєте CFO. Не 'ми робимо AI'. '14k заявок/день,
-> $0.47 на заявку, LLM додає всього $0.01, зберігаємо $15M/рік vs
-> legacy'. Precise numbers з production dashboard, не Excel-estimate."
+> $0.47 на заявку, LLM додає всього $0.01, різниця з legacy — до ~$15M/рік (верхня межа: час оператора на HITL-кейси не враховано)' —
+> це модельні припущення; у продакшні замінюються фактичними числами з дашборду."
 
 ### Q&A
 
@@ -281,11 +281,10 @@ A: Так — "smoke eval" = 5 cases (core happy path + 2 adversarial) → 1 х�
 Full 20 cases — nightly. CI gate для PR використовує smoke; nightly
 = deep check.
 
-**Q: Чому CI gate не блокує якщо decision_accuracy = 94% (нижче 95%)?**
-A: Залежить від **direction**. Якщо падає з 97% до 94% за один коміт
-→ regression → BLOCKED. Якщо стабільно 94% місяцями → можливо
-threshold надто agresivный, downgrade до 92%. Threshold — negotiable з
-Risk/Compliance.
+**Q: Чому CI gate не блокує якщо decision_accuracy = 94%?**
+A: Поріг — 92% (на 20 кейсах це 19/20), тож 94% проходить. Але дивимось і на
+**direction**: падіння з 97% до 94% за один коміт — це regression, його
+розслідуємо. Поріг — negotiable з Risk/Compliance.
 
 ---
 

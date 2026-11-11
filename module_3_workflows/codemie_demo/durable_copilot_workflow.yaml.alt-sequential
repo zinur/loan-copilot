@@ -39,7 +39,8 @@
 
 name: loan-copilot-durable-w3
 description: >
-  Durable Loan Copilot з 11 state'ами, 3 durable waits (24h/7d/signed),
+  Durable Loan Copilot з 12 вузлами (+ гілка Saga compensation),
+  3 durable waits (docs 48h / offer 7d / sign 7d),
   2 conditional HITL гейти, 1 evaluator pre-write gate, та Saga
   compensation на cancellation.
 mode: Sequential
@@ -66,7 +67,7 @@ assistants:
     assistant_id: compensation-agent          # НОВИЙ W3 — Saga rollback
 
 # ----------------------------------------------------------------------------
-# STATES — 11-node durable FSM
+# STATES — 12-node durable FSM (+ compensation-state)
 # ----------------------------------------------------------------------------
 states:
 
@@ -354,7 +355,8 @@ states:
 
       ⚠️ IDEMPOTENCY (КРИТИЧНО):
       Webhook може прийти 2+ рази (мережа, Дія.Підпис retry).
-      Composite key: SHA256({{tax_id}}::{{contract_id}}::{{event_id}}).
+      Composite key: SHA256({{application_id}}::sign_awaiting::{{event_id}})
+      (канонічно: application_id + node + event_id).
       Якщо key вже у БД `processed_events` → поверни {disbursed: true}
       БЕЗ повторного виклику disburse.
 
@@ -384,8 +386,9 @@ states:
     task: |
       Виконай компенсуючі дії для cancellation / rejection / verify-fail:
 
-      1. Якщо limit_reserved == true → виклич `limit.release(contract_id)`.
-      2. Якщо contract_id не null → виклич `contract.cancel(contract_id)`.
+      Saga: компенсації у ЗВОРОТНОМУ порядку (cancel_contract, потім release_limit).
+      1. Якщо contract_id не null → виклич `contract.cancel(contract_id)`.
+      2. Якщо limit_reserved == true → виклич `limit.release(contract_id)`.
       3. Запиши у audit `limit_released_rollback` з reason.
       4. Повідом клієнту (SMS/email): "Заявка скасована, резерв знято".
 
@@ -446,4 +449,10 @@ enable_summarization_node: false
 #    - docs_requested: 48h → timeout → compensation
 #    - offer: 7d → expired → compensation
 #    - sign_awaiting: 7d → expired → compensation (повернення лімит)
+#    - analyst_review SLA 2h / committee_review 24h: HITL safe default —
+#      якщо людина не відповіла у SLA → hold/ескалація (або decline за
+#      політикою), НІКОЛИ auto-approve.
+# 6. credit_history: 3 retries з exp backoff; timeout 4s на спробу
+#    (ілюстративно) → потім DLQ; кеш 24h за tax_id+consent_id; ~$1.50/виклик
+#    УБКІ (модельне припущення).
 # ----------------------------------------------------------------------------

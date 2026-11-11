@@ -12,11 +12,11 @@
 | Компонент | W2 | W3 |
 |---|---|---|
 | Routing | LLM parent (handoff) | **Deterministic Sequential FSM** (YAML workflow) |
-| Durable waits | ❌ | ✅ 3 waits з `interrupt_before: true` (docs 24h, offer 7d, sign 7d) |
+| Durable waits | ❌ | ✅ 3 waits з `interrupt_before: true` (docs 24–48h, offer 7d, sign 7d) |
 | HITL gates | ⚠️ 1 inline (consent) | ✅ 2 conditional (analyst OCR<0.85, committee grey zone) |
 | Pre-write gate | ❌ | ✅ `verify-before-send-agent` (deterministic match) |
-| Saga rollback | ❌ | ✅ `compensation-state` (limit.release + contract.cancel + notify) |
-| Idempotency | ⚠️ (prompt discipline) | ✅ **Tool-level** `check_idempotency` + composite key |
+| Saga rollback | ❌ | ✅ `compensation-state` (contract.cancel, потім limit.release, потім notify) |
+| Idempotency | ⚠️ (prompt discipline) | ✅ **Tool-level** `check_idempotency` + composite key `SHA256(application_id + node + event_id)` |
 | Checkpointer | n/a (short-lived) | ✅ **Postgres** (default у CodeMie, survives `kill -9`) |
 
 ## Чеклист деплою (~30 хв)
@@ -47,7 +47,7 @@ inline mocks у system prompts або скористайся WorldcodeMie MCP mo
 | Tool | Side-effect | Idempotent? | Mock location |
 |---|---|---|---|
 | `ocr.extract(url)` | external-read | Так (same url → same result) | module_3_workflows mock |
-| `contract.draft({tax_id, amount, rate, term})` | **internal-write** (reserves limit!) | **Так** (contract_id = f(tax_id, timestamp)) | module_3_workflows mock |
+| `contract.draft({tax_id, amount, rate, term})` | **internal-write** (reserves limit!) | **Так** (contract_id = SHA256(application_id + version)) | module_3_workflows mock |
 | `limit.reserve(contract_id, amount)` | **internal-write** | Так (composite key) | module_3_workflows mock |
 | `limit.release(contract_id)` | internal-write (rollback) | Так | module_3_workflows mock |
 | `contract.cancel(contract_id)` | internal-write (rollback) | Так | module_3_workflows mock |
@@ -90,7 +90,7 @@ data model). **Жодного Admin UI toggle немає** — усі workflows 
 | `offer.decision` | `/api/v1/workflows/.../resume` | HMAC-SHA256 |
 | `contract.signed` | `/api/v1/workflows/.../resume` | **Signature від Дія.Підпис** (JWT) |
 
-Для демо signature verification можна temporarily disable, але у prod — mandatory.
+Для демо signature verification можна temporarily disable, але у prod її слід вмикати обов'язково (банківська практика).
 
 ### Крок 7. Set workflow-level timeouts (~1 хв)
 
@@ -105,7 +105,7 @@ max_wait_duration:
   sign-awaiting-state: 604800   # 7d
 ```
 
-Якщо timeout — автоматично transitions у `compensation-state`.
+Якщо timeout — автоматично transitions у `compensation-state`. HITL safe default: для `analyst-review-state` / `committee-review-state` відсутність відповіді в SLA означає hold/ескалацію (або decline за політикою), НІКОЛИ auto-approve; `credit_history`: 3 retry з exp backoff, timeout 4s на спробу (ілюстративно), потім DLQ.
 
 ### Крок 8. Smoke test (~5 хв)
 

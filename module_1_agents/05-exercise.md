@@ -6,8 +6,8 @@
 
 ## Learning objective
 
-Самостійно побудувати 5-й agent (**ContractAgent**) та інтегрувати
-його у Orchestrator. Перевірити ваше розуміння паттерну.
+Самостійно побудувати наступного agent'а — **ContractAgent** (поряд із 4
+реалізованими в W1) — та інтегрувати його у Orchestrator. Перевірити ваше розуміння паттерну.
 
 ## Prerequisites
 
@@ -21,7 +21,8 @@
 
 - Отримувати `Application` з `decision=="approve"` та `rate_apr`.
 - Генерувати текст контракту за template (не викликайте LLM для
-  форматування таблиці — це робить Jinja).
+  форматування таблиці — це робить детермінований template: Jinja або
+  Python `str.format`; Jinja не входить у `requirements.txt`, додайте за потреби).
 - Повертати `AgentResponse` з `next_action="handoff"`,
   `handoff_to="ComplianceAgent"`, `data={"contract_text": "..."}`.
 
@@ -38,7 +39,8 @@ refusal для питання «а чи схвалите мені кредит?�
 
 ### 4. Напишіть 3 unit tests для `route()`
 
-У `tests/test_routing.py`:
+Створіть `module_1_agents/tests/test_routing.py` (папки `tests/` у репо ще
+немає; додайте також `tests/__init__.py`, якщо pytest не бачить пакет):
 
 - test_empty_state → `IntakeAgent`
 - test_kyc_failed → `None` (flow припиняється)
@@ -88,6 +90,6 @@ schema. Додайте comp'уте property у `Application`.
 
 ## Коли готово
 
-Переходьте до [Module 2 · Grounding](../module-2-grounding/README.md).
+Переходьте до [Module 2 · Grounding](../module_2_grounding/README.md).
 Там підключимо реальні tools (credit history, KYC) та LLM Gateway замість
 прямих викликів.

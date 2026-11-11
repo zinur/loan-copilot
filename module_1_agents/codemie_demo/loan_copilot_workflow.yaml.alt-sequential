@@ -27,13 +27,15 @@
 #   credit-history-state ← LLM credithistoryagent (з explicit lookup dict)
 #   underwriter-state    ← LLM underwriter
 #
-# LLM з temperature=0 та explicit lookup table поводиться детерміновано
-# та дає ті самі результати що й Python-версія common/scenario_data.
+# LLM з temperature=0 та explicit lookup table поводиться практично детерміновано
+# (це не гарантія) та має давати ті самі lookup-результати що й common/scenario_data.
+# Underwriter-пороги тут (prompt) і в Python-версії різні: для скору 580 workflow дає
+# manual_review, src/orchestrator.py — decline (спрощені пороги).
 #
 # ПЕРЕДУМОВИ:
 #   У CodeMie створені 4 assistant'и зі slug'ами:
 #     intake-agent, kycagent, credithistoryagent, underwriter
-#   (всі з temperature=0 для детермінованої mock-поведінки)
+#   (temperature=0 для kycagent/credithistoryagent/underwriter, 0.1 для intake-agent)
 #
 # ІНСТРУКЦІЯ:
 #   1. Workflows → + Create Workflow → YAML view → paste → Save.

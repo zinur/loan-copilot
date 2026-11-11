@@ -6,6 +6,19 @@
 3. Розподілені транзакції (Saga Pattern) із компенсуючими діями (відкат зарезервованого ліміту)
 4. Ідемпотентний бар'єр для захисту від дублювання вебхуків підпису
 
+Увага: це СПРОЩЕНИЙ навчальний референс (10 вузлів), а не канонічний 12-вузловий
+workflow з deck («W3 Use-case»: intake, docs_requested, docs_processing,
+analyst_review, kyc, credit_history, underwriter, committee_review, offer,
+contract_draft, verify_before_send, sign_awaiting). Відомі розбіжності:
+- немає wait-вузлів docs_requested/offer, analyst_review та verify_before_send;
+- немає retry/timeout/DLQ; пороги 550-650 (Tier C) відповідають band C з deck;
+- ключ ідемпотентності = sha256(application_id:event_id) без `node`
+  (канонічно SHA256(application_id + node + event_id));
+- compensation_node виконує release_limit і cancel_contract разом (канонічний
+  порядок: cancel_contract, потім release_limit);
+- HITL не використовує interrupt(): повторний invoke на тому ж thread_id
+  стартує від intake. Safe default: без human_decision заявка не схвалюється.
+
 Запуск:
     python -m module_3_workflows.src.workflow_engine
 """

@@ -83,7 +83,7 @@ reduce clarity by -1.
 
 ### Self-enhancement bias
 Якщо agent-under-test з такого ж family (напр., both GPT-4) — flag:
-`self_enhancement_risk: high`. Judge model має бути з ІНШОЇ сімʼї
+`self_enhancement_risk: high`. Judge model має бути з ІНШОЇ сімʼї (калібрується на ~50 human-rated кейсах)
 (e.g. judge=Claude, agent=GPT). CodeMie дозволяє multi-provider.
 
 ## Chain-of-Thought output format (Few-Shot)

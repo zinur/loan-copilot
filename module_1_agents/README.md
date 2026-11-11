@@ -5,8 +5,14 @@
 ## Що ви навчитесь
 
 Побудуєте **Loan Copilot** як multi-agent систему: Orchestrator + 7
-specialists. У кінці W1 у вас працюватиме end-to-end flow від
-`intake` до `decision` на моках.
+specialists (Intake, KYC, CreditHistory, Underwriter, Pricing, Contract,
+Compliance). У коді W1 реалізовано Orchestrator + перші 4 specialists;
+ContractAgent додаєте самостійно в домашній лабі. У кінці W1 у вас
+працюватиме наскрізний flow від `intake` до `decision` на моках.
+
+Теорію цього блоку дивіться в деку (слайди «W1 Agenda», «W1 Theory»,
+«A2A contract», «Scenario», «Loan journey»); live-демо у CodeMie
+відповідає частині практики «Loan journey» (`codemie_demo/`).
 
 ## Prerequisites
 

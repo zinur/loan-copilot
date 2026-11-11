@@ -4,8 +4,7 @@
 > `risk-agent`) до parent-а з W1. Жодного YAML workflow не треба — parent
 > з `assistant_ids` автоматично розширюється.
 >
-> Альтернатива (deterministic Sequential workflow з HITL interrupt на
-> consent) — у [`grounded_copilot_workflow.yaml.alt-sequential`](./grounded_copilot_workflow.yaml.alt-sequential).
+> Альтернатива (deterministic Sequential workflow з Consent Gate як demo verifier) — у [`grounded_copilot_workflow.yaml.alt-sequential`](./grounded_copilot_workflow.yaml.alt-sequential).
 
 ## Що додаємо у W2 vs W1
 
@@ -13,7 +12,7 @@
 |---|---|---|
 | Eligibility | ❌ не було | ✅ новий `eligibility-agent` з RAG на `loan-policies-ds` |
 | KYC | ✅ (mock lookup table) | ✅ **тепер real tool** `kyc.lookup` |
-| Consent Gate | ❌ не було | ✅ **`interrupt_before: true`** перед UBKI |
+| Consent Gate | ❌ не було | ✅ **demo verifier** (`consent-gate-agent`) перед UBKI; справжній HITL-interrupt — W3 |
 | Credit History | ✅ (mock lookup table) | ✅ **real tool** `credit_history.pull` з consent_id |
 | Risk Score | ❌ не було | ✅ новий `risk-agent` з tool `risk.score` |
 | LLM Gateway | ⚠️ default | ✅ DIAL on-prem або Azure OpenAI EU (PII masking + budgets) |
@@ -27,7 +26,7 @@
 | Поле | Значення |
 |------|----------|
 | Name | `loan-policies-ds` |
-| **Description** | `Внутрішні банківські регламенти кредитування: политика видачі consumer loans (POL-LOAN-01), SOP ануїтетного розрахунку + 4-tier policy matrix (SOP-CREDIT-02), Постанова НБУ №351 про операційний ризик. Використовується Eligibility Agent для grounded refusals з обов'язковою цитатою § пункту. effective_date metadata фільтрує застарілі версії регламентів.` |
+| **Description** | `Внутрішні банківські регламенти кредитування: политика видачі consumer loans (POL-LOAN-01), SOP ануїтетного розрахунку + 4-tier policy matrix (SOP-CREDIT-02), Постанова НБУ №351 про визначення розміру кредитного ризику. Використовується Eligibility Agent для grounded refusals з обов'язковою цитатою § пункту. effective_date metadata фільтрує застарілі версії регламентів.` |
 | **Type** | **`Knowledge Base File`** (internal API: `knowledge_base_file`; CodeMie File datasource — приймає `.md`, `.pdf`, `.docx`, `.txt`, `.json`) |
 | **Embedding model** | **`text-embedding-ada-002`** (OpenAI Ada · 1536-dim) |
 | Chunk size | 500 tokens |
@@ -43,7 +42,7 @@
 
 **Upload:** 3 файли з `module_2_grounding/data/policies/`:
 - `POL-LOAN-01.md` (політика кредитування, ФОП §4.2.1)
-- `SOP-CREDIT-02.md` (ануїтет, PTI, 4-tier matrix §5)
+- `SOP-CREDIT-02.md` (ануїтет, PTI, 4-tier matrix §3.1)
 - `REG-NBU-351.md` (постанова НБУ, валютні обмеження)
 
 > Інші альтернативи для production (якщо файли живуть у Git):
@@ -106,8 +105,8 @@ mock responses у system prompt (швидше).
 - default → `{score: 650, arrears: []}`
 
 **risk.score:** compute локально за правилом:
-band = "A" if bureau_score >= 700 and pti <= 0.35 else
-       "B" if bureau_score >= 620 and pti <= 0.45 else
+band = "A" if bureau_score >= 750 and pti <= 0.35 else   # SOP-CREDIT-02 §3.1
+       "B" if bureau_score >= 650 and pti <= 0.45 else
        "C" if bureau_score >= 550 and pti <= 0.50 else "D"
 ```
 
@@ -127,7 +126,7 @@ Agent "викликає" tool у текстовому форматі (без р�
 У **Admin → AI Models** → перевір, що:
 
 - Default provider = DIAL on-prem (або Azure OpenAI EU private endpoint).
-- US-based OpenAI, Anthropic прямо — **заборонено** (banking secret Ст. 60).
+- US-based OpenAI, Anthropic прямо — **не допускається** за політикою банку з огляду на банківську таємницю (ЗУ «Про банки і банківську діяльність», ст. 60).
 
 У **Project → Guardrails** → увімкни:
 
@@ -162,7 +161,7 @@ Agent "викликає" tool у текстовому форматі (без р�
 ### Крок 6. Smoke test (~2 хв)
 
 Запусти payload #1 з [`demo_payloads.md`](./demo_payloads.md) → має пройти
-intake → eligibility (cite POL-LOAN-01) → consent gate (pause) → KYC →
+intake → eligibility (cite POL-LOAN-01) → KYC → consent gate (demo verifier) →
 UBKI → risk → underwriter → approve.
 
 **Якщо падає:**
@@ -175,9 +174,10 @@ UBKI → risk → underwriter → approve.
 > button НЕ підтримує справжні HITL interrupts (CodeMie auto-прогоняє).
 > Тому consent-gate у W2 — це **demo verifier**: LLM аналізує initial
 > payload на наявність явної згоди. Для **справжнього durable HITL**
-> (24h pause до webhook, resume через API) → див. W3 workflow
-> (`durable_copilot_workflow.yaml.alt-sequential` · 5 interrupts: docs,
-> analyst, committee, offer, sign).
+> (durable pause до webhook, resume через API) → див. W3 workflow
+> (`durable_copilot_workflow.yaml.alt-sequential` · 12 вузлів: 3 durable
+> waits (docs, offer, sign) + 2 умовні HITL (analyst, committee) +
+> 1 evaluator gate).
 
 ---
 
@@ -190,7 +190,7 @@ UBKI → risk → underwriter → approve.
 - [ ] LLM Gateway вказує на DIAL/Azure EU, НЕ на public OpenAI.
 - [ ] Guardrails (DLP, Input/Output filter) увімкнені на project.
 - [ ] Budget caps налаштовані.
-- [ ] Parent-assistant має 6 sub-assistants (4 з W1 + 2 нових).
+- [ ] Parent-assistant має sub-assistants з W1 + eligibility-agent, risk-agent (+ consent-gate-agent, якщо використовується Sequential-варіант).
 - [ ] Open у 3 вкладках: parent chat, Datasource preview, Langfuse trace.
 - [ ] Backup: VS Code з `python -m module_2_grounding.src.orchestrator_v2` готовий.
 
@@ -200,8 +200,7 @@ UBKI → risk → underwriter → approve.
 на assistant level, або attached але Chunking виставлено занадто велике
 (1000+) — не влізе у context. Spot-check: chunk size має бути 500 tok.
 
-**"Interrupt_before на consent gate не паузить"** → перевір, що у
-assistant settings вимкнено "auto-resume on interrupt". Default — pause.
+**"Consent gate не зупиняє workflow"** → у W2-демо це verifier, а не справжня пауза: перевір, що у повідомленні немає явної згоди ("згоден" тощо). Справжній `interrupt_before` — W3.
 
 **"Credit history pull повертає score з голови"** → tool не attached,
 agent галюцинує. Attach у Assistant → Tools, перевір schema.

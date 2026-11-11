@@ -1,4 +1,7 @@
-"""FinOps-модель юніт-економіки кредитного конвеєра при масштабуванні."""
+"""FinOps-модель юніт-економіки кредитного конвеєра при масштабуванні.
+
+Усі тарифи, обсяги та конверсії — МОДЕЛЬНІ ПРИПУЩЕННЯ воркшопу (не фактичні дані банку).
+"""
 
 from __future__ import annotations
 
@@ -28,7 +31,7 @@ REASONING_LLM_TIER = TierPricing(
 # Вартість виклику зовнішніх та внутрішніх інструментів
 TOOL_COSTS = {
     "kyc_lookup": 0.80,          # Санкційні списки та реєстри PEP
-    "credit_history_pull": 1.50, # UBKI (Українське БКІ): UAH 50–80 за lookup
+    "credit_history_pull": 1.50, # УБКІ (бюро кредитних історій): UAH 50–80 за lookup
     "evaluate_risk_tier": 0.05,  # Внутрішня скорингова модель банку
 }
 
@@ -64,8 +67,8 @@ def calculate_case_cost(
     underwriter_total = underwriter_prompt_cost + underwriter_comp_cost
 
     # 4. Зовнішні інструменти (з урахуванням воронки конверсії до підписання)
-    # З усіх стартів до виклику UBKI доходять ~50% (після проходження Consent Gate),
-    # з них UBKI pull — ~30% від початкової воронки (на PB scale 14k/день).
+    # До запиту УБКІ доходять ~30% стартів (після проходження Consent Gate;
+    # модельне припущення для PB scale 14k/день).
     bureau_conversion = 0.30
     tools_total = (
         (TOOL_COSTS["credit_history_pull"] * bureau_conversion)

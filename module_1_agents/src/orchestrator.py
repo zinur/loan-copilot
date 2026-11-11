@@ -84,9 +84,11 @@ def credit_history_agent(state: Application, user_msg: str) -> AgentResponse:
 def underwriter_agent(state: Application, user_msg: str) -> AgentResponse:
     """Policy decision за simple rule-based thresholds.
 
-    У W2 замінимо на LLM-powered reasoning з SOP (Standard Operating Procedure) grounding. Поки — чистий
-    Python, щоб було видно, що це НЕ має бути LLM виклик, якщо правила
-    формалізовані.
+    Underwriter — детермінована математика (PTI, пороги), НЕ LLM-виклик, бо
+    правила формалізовані. У W2 LLM може лише пояснювати рішення з опорою на
+    SOP (Standard Operating Procedure), але не приймати його. Пороги тут
+    спрощені й ілюстративні (модельне припущення) і відрізняються від
+    CodeMie-prompt'а `ws_underwriter.prompt.md`.
     """
     score = state.credit_score or 0
     income = state.applicant.monthly_income

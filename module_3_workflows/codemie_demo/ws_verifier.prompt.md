@@ -79,10 +79,10 @@ Fail:
 
 ## Чому це існує
 
-Air Canada case: bot сказав клієнту "ставка 15%", у фактичному договорі
+Air Canada case (ілюстративна аналогія: відповідальність за слова бота): bot сказав клієнту "ставка 15%", у фактичному договорі
 було 22%. Канадський трибунал: банк відповідає за слова свого бота.
 
-Pre-write gate — detprmіnistic check між LLM output та final artifact
+Pre-write gate — deterministic check між LLM output та final artifact
 ПЕРЕД доставкою. Якщо LLM reasoning drift'ne хоч на 0.1%, тут це
 зловимо до того, як клієнт підпише.
 

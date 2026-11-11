@@ -22,13 +22,13 @@ flow у durable Sequential workflow, що виживає `kill -9` K8s, чека
 | Файл | Що це |
 |------|-------|
 | **[`HOW_TO_DEPLOY.md`](./HOW_TO_DEPLOY.md)** | **Основна інструкція** — 4 нових workers + 6 tools + Postgres checkpointer + webhook endpoints + workflow YAML |
-| **[`durable_copilot_workflow.yaml.alt-sequential`](./durable_copilot_workflow.yaml.alt-sequential)** | **Основний артефакт** — 11-state FSM з 3 durable waits, 2 conditional HITL, 1 pre-write gate, 1 Saga compensation |
+| **[`durable_copilot_workflow.yaml.alt-sequential`](./durable_copilot_workflow.yaml.alt-sequential)** | **Основний артефакт** — 12-вузловий FSM з 3 durable waits, 2 conditional HITL, 1 pre-write gate (+ Saga compensation-state) |
 | [`ws_verifier.prompt.md`](./ws_verifier.prompt.md) | System prompt для Pre-write Evaluator (deterministic match verifier) |
 | [`ws_compensator.prompt.md`](./ws_compensator.prompt.md) | System prompt для Saga Compensation agent (3 rollback tools) |
 | [`demo_payloads.md`](./demo_payloads.md) | 4 scenarios: happy+survive k9, idempotent replay, Saga rollback, pre-write fail |
 | [`demo_script.md`](./demo_script.md) | 15-хв сценарій живого показу |
 
-## 11-state FSM map
+## 12-node FSM map (+ compensation)
 
 ```
     1. intake
@@ -57,9 +57,12 @@ flow у durable Sequential workflow, що виживає `kill -9` K8s, чека
        ↓
     END
 
-    X. compensation ⤺ (Saga rollback: limit.release + contract.cancel + notify)
+    X. compensation ⤺ (Saga rollback у зворотному порядку: contract.cancel, потім
+       limit.release, потім notify; payout non-compensable)
        ← called from docs timeout, analyst reject, verify fail,
-         offer reject/expire, sign fail
+         offer reject/expire, sign expire
+       HITL safe default: немає відповіді в SLA (analyst 2h / committee 24h) →
+       hold/ескалація (або decline за політикою), НІКОЛИ auto-approve
 ```
 
 Legend:
@@ -90,12 +93,12 @@ Legend:
    нуль pod resources. `asyncio.sleep` → pod blocked, lost on restart.
 
 2. **Pre-write Evaluator Gate.** Deterministic check МІЖ LLM output та
-   final artifact. Saved Air Canada case. Temperature 0, read-only.
+   final artifact (ілюстративна аналогія з кейсом Air Canada). Temperature 0, read-only.
 
-3. **Saga Compensation vs 2PC.** 2-Phase Commit mertvий у мікросервісах
+3. **Saga Compensation vs 2PC.** 2-Phase Commit непрактичний між незалежними системами
    (SMS gateway не має XA). Saga = checklist compensating actions,
    викликаних у reverse order. Один `compensation-state` обслуговує
-   усі 4 failure branches (DRY).
+   усі failure branches (DRY).
 
 ## Пов'язано
 
