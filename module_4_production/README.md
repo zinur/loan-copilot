@@ -9,11 +9,11 @@
 ## Матеріали та практичні кроки (Steps)
 
 1. **[01-eval-and-observability-lab.md](./01-eval-and-observability-lab.md)** · **Лабораторний практикум із Eval & Observability:** покроковий розбір 4 експериментів (батч-оцінка 20 кейсів, викриття Verbosity Bias судді, детекція витоку карток за формулою Луна, FinOps та Langfuse).
-2. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** пакетна валідація 20 кейсів Golden Set, налаштування Quality Gate у CI/CD, FinOps-модель та Langfuse-трейсинг.
+2. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** оцінка трьох відповідей на QA-004 проти реально знайденого контексту, перевірка Quality Gate (інтеграція в CI/CD — поза скоупом воркшопу) та Langfuse-трейсинг.
 3. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** збалансована вибірка за категоріями (Eligibility, Risk, KYC, Adversarial attacks).
 4. **[src/eval_metrics.py](./src/eval_metrics.py)** · **Математичні метрики RAGAS & Guardrails:** алгоритми розрахунку Faithfulness, Answer Relevance, Context Recall, верифікація карток за алгоритмом Луна та виявлення спроб Prompt Injection.
-5. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат:** розрахунок full-case cost (~$0.47) та incremental AI cost (~$0.01) на PB scale 14 000 заявок/день (consumer loans) з урахуванням Prompt Caching (усі числа — модельні припущення).
-6. **[src/run_eval.py](./src/run_eval.py)** · **Головний runner оцінювання для CI/CD:** інтерактивний запуск пакетного тестування з красивими Rich-таблицями та перевіркою порогів блокування білда (Quality Gates).
+5. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат (довідково, до теорії W4; у практичне завдання не входить):** розрахунок full-case cost (~$0.47) та incremental AI cost (~$0.01) на PB scale 14 000 заявок/день (consumer loans) з урахуванням Prompt Caching (усі числа — модельні припущення).
+6. **[src/run_eval.py](./src/run_eval.py)** · **Runner оцінювання (придатний для CI/CD; інтеграція поза скоупом):** реальний пошук контексту (модуль W2), три позначені відповіді на QA-004, метрики Faithfulness / PII / ін'єкція, рішення Quality Gate (код виходу 1 при BLOCKED).
 7. **[tests/test_eval_pipeline.py](./tests/test_eval_pipeline.py)** · **Автоматичні юніт-тести:** 6 тестів для перевірки метрик, виявлення PII, персистенції ранів та FinOps-розрахунків.
 8. **[Інтерактивна презентація (deck.html)](../deck.html)** · Слайди «W4 Agenda», «W4 Theory», «Metric families», «Eval Architecture», «GenAI Observability», «FinOps & Economics», «Adversarial Security», «AI-specific hardening», «W4 Use-case», «CI/CD Eval & Langfuse», «Prompt & agent governance» із детальним архітектурним розбором.
 
@@ -125,7 +125,7 @@
 
 ## 5. Практичний запуск та тестування
 
-Запуск повного пакету тестування, валідації 20 кейсів Golden Set та розрахунку FinOps-проєкцій виконується однією командою:
+Оцінка трьох відповідей на QA-004 (реальний пошук контексту, метрики й Quality Gate) та FinOps-проєкції запускаються однією командою:
 
 ```bash
 cd loan-copilot

@@ -458,27 +458,22 @@ module_2_grounding/
 ```bash
 cd loan-copilot   # корінь репозиторію
 
-# Повний запуск усіх 4 експериментів із лідербордом (експеримент 5 = --benchmark):
+# Повний запуск усіх 4 експериментів:
 .venv/bin/python -m module_2_grounding.src.rag_lab
 
 # Запуск окремого експерименту:
-.venv/bin/python -m module_2_grounding.src.rag_lab --exp 1   # Битва розмірів чанків
+.venv/bin/python -m module_2_grounding.src.rag_lab --exp 1   # Розмір чанків
 .venv/bin/python -m module_2_grounding.src.rag_lab --exp 2   # Dense vs BM25 vs Hybrid
-.venv/bin/python -m module_2_grounding.src.rag_lab --exp 3   # Cross-Encoder Reranker
+.venv/bin/python -m module_2_grounding.src.rag_lab --exp 3   # Reranker (евристика)
 .venv/bin/python -m module_2_grounding.src.rag_lab --exp 4   # Citation & Refusal Gate
-.venv/bin/python -m module_2_grounding.src.rag_lab --benchmark # Підсумковий лідерборд
 
 # Запуск юніт-тестів:
 .venv/bin/python -m pytest module_2_grounding/tests/
 ```
 
-### Підсумкові результати бенчмарку лаби (ілюстративні значення, захардкоджені у `rag_lab.py`; модельне припущення):
-| Архітектура RAG | Recall@3 | Faithfulness | Latency | Cost / 1k запитів | Вердикт для банку |
-|---|---|---|---|---|---|
-| **1. Naive (150t, Dense)** | 55.0% | 42.0% | 110 ms | $0.05 | Небезпечно для регламентів (ризик помилкових схвалень) |
-| **2. Semantic (500t)** | 72.5% | 68.0% | 145 ms | $0.14 | Базовий рівень для простих PoC |
-| **3. Hybrid (BM25 + Dense RRF)** | 88.0% | 84.0% | 190 ms | $0.22 | Корпоративний стандарт для банківських політик |
-| **4. Hybrid + Reranker + Gate** | **96.5%** | **99.2%** | 265 ms | $0.32 | **Промисловий стандарт Loan Copilot** (повний захист від галюцинацій) |
+### Що показує лаба
+
+Таблиці й висновки лаби обчислюються з реальної видачі пошуку (без захардкоджених метрик); докладно — в [02-rag-tuning-lab.md](./02-rag-tuning-lab.md).
 
 ---
 

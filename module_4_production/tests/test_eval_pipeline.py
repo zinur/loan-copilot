@@ -82,7 +82,10 @@ def test_eval_run_persistence():
     from module_4_production.src.run_eval import run_pipeline_eval
 
     summary = run_pipeline_eval()
-    assert summary.ci_passed is True
+    # Три фікстури QA-004: A проходить, B і C блокуються => gate для набору BLOCKED
+    assert summary.total_cases == 3
+    assert summary.passed_cases == 1
+    assert summary.ci_passed is False
 
     runs_dir = Path(__file__).resolve().parent.parent / "data" / "eval_runs"
     assert runs_dir.exists()
@@ -93,5 +96,5 @@ def test_eval_run_persistence():
     latest_file = sorted(run_files)[-1]
     with open(latest_file, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
-        assert len(lines) == 21  # 1 summary + 20 traces
+        assert len(lines) == 4  # 1 summary + 3 traces
 

@@ -3,14 +3,16 @@
 Практичний лабораторний стенд для AI-архітекторів:
 - Експеримент 1: Битва розмірів чанків (150 vs 500 vs 1200 токенів)
 - Експеримент 2: Дуель пошуку (Dense vs BM25 vs Hybrid RRF)
-- Експеримент 3: Cross-Encoder Reranker (підйом важливого чанка з #7 на #1)
-- Експеримент 4: Citation & Refusal Gate (захист від прецеденту Air Canada)
-- Експеримент 5: Підсумковий Leaderboard-бенчмарк
+- Експеримент 3: Reranker (як змінюється ранг цільового чанка; евристика, що імітує cross-encoder)
+- Експеримент 4: Citation & Refusal Gate (відмова, якщо в політиках немає підтверджуючої норми)
+
+Усі таблиці й висновки обчислюються з реальної видачі пошуку; готових відповідей
+чи захардкоджених метрик тут немає. BM25 — справжній; «Dense» тут — локальний
+детермінований енкодер (не нейромережа), а reranker — евристика термінів і чисел.
 
 Запуск:
     python -m module_2_grounding.src.rag_lab
     python -m module_2_grounding.src.rag_lab --exp 1
-    python -m module_2_grounding.src.rag_lab --benchmark
 """
 
 from __future__ import annotations
@@ -53,350 +55,238 @@ def load_corpus() -> dict[str, str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ЕКСПЕРИМЕНТ 1: Битва розмірів чанків (Chunk Size & Overlap)
+# Допоміжні функції
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _rank_of(results, predicate) -> int | None:
+    """1-based ранг першого чанка, що задовольняє умову; None, якщо його немає у видачі."""
+    for i, (chunk, _score) in enumerate(results, start=1):
+        if predicate(chunk):
+            return i
+    return None
+
+
+def _fmt_rank(rank: int | None, depth: int) -> str:
+    return f"#{rank}" if rank is not None else f"поза Top-{depth}"
+
+
+def _ok(flag: bool, yes: str, no: str) -> str:
+    return f"[green]{yes}[/green]" if flag else f"[red]{no}[/red]"
+
+
+def _is_fop_exception(chunk: Chunk) -> bool:
+    return "4.2.1" in chunk.text or "12 місяців" in chunk.text
+
+
+def _is_tier_matrix(chunk: Chunk) -> bool:
+    return chunk.doc_id == "SOP-CREDIT-02" and "Tier A" in chunk.text
+
+
+# ──────────────────────────────────────────────
+# ЕКСПЕРИМЕНТ 1: Розмір чанків (Chunk Size & Overlap)
+# ──────────────────────────────────────────────
 
 
 def run_experiment_1_chunking(corpus: dict[str, str]) -> None:
     rprint("\n" + "=" * 75)
-    rprint("[bold cyan]ЕКСПЕРИМЕНТ 1 · Битва розмірів чанків (Chunk Size Battle)[/bold cyan]")
+    rprint("[bold cyan]ЕКСПЕРИМЕНТ 1 · Розмір чанків (Chunk Size)[/bold cyan]")
     rprint("=" * 75)
-    rprint(
-        "[dim]Питання: «Чи може позичальник-ФОП отримати кредит без застави на 150 000 грн,\n"
-        "якщо строк його реєстрації становить 8 місяців?»[/dim]\n"
-    )
-
     query = "ФОП без застави 150 000 грн строк реєстрації 8 місяців"
+    rprint(f"[dim]Запит: «{query}»\nОчікуваний фрагмент: виняток для ФОП (POL-LOAN-01 §4.2.1, 12 місяців)[/dim]\n")
+
     pol_text = corpus.get("POL-LOAN-01", "")
+    configs = [
+        ("1. Naive (120 tokens)", naive_chunk_document("POL-LOAN-01", pol_text, chunk_size=120, overlap=15)),
+        ("2. Semantic (500 tokens)", semantic_chunk_document("POL-LOAN-01", pol_text, max_tokens=500)),
+    ]
 
-    # 1. Наївний чанкінг 120 токенів
-    chunks_150 = naive_chunk_document("POL-LOAN-01", pol_text, chunk_size=120, overlap=15)
-    pipe_150 = HybridSearchPipeline(use_api=False)
-    pipe_150.index_chunks(chunks_150)
-    res_150 = pipe_150.search_bm25(query, top_k=1)
+    table = Table(title="BM25 Top-1 для різних стратегій чанкінгу", show_lines=True)
+    table.add_column("Стратегія", style="bold", width=24)
+    table.add_column("Знайдений фрагмент (Top-1)", width=46)
+    table.add_column("Чанків", justify="center")
+    table.add_column("Виняток ФОП у Top-1", width=20)
 
-    # 2. Семантичний чанкінг 500 токенів
-    chunks_500 = semantic_chunk_document("POL-LOAN-01", pol_text, max_tokens=500)
-    pipe_500 = HybridSearchPipeline(use_api=False)
-    pipe_500.index_chunks(chunks_500)
-    res_500 = pipe_500.search_bm25(query, top_k=1)
-
-    table = Table(title="Результати пошуку за різними розмірами чанків", show_lines=True)
-    table.add_column("Стратегія", style="bold", width=22)
-    table.add_column("Знайдений фрагмент (Top-1)", style="white", width=42)
-    table.add_column("Висновок LLM", style="yellow", width=22)
-    table.add_column("Ризик для банку", style="bold red", width=20)
-
-    # Аналіз top-1 для 150 tokens
-    top_150_text = res_150[0][0].text if res_150 else "Не знайдено"
-    has_exception_150 = "12 місяців" in top_150_text or "4.2.1" in top_150_text
-
-    llm_verdict_150 = "«ВІДМОВА»" if has_exception_150 else "«СХВАЛЕНО (≥6 міс)»"
-    risk_150 = "Безпечно" if has_exception_150 else "КРИТИЧНО: видача кредиту всупереч політиці!"
-
-    table.add_row(
-        "1. Naive (120 tokens)\n[dim]Фіксований розмір[/dim]",
-        top_150_text[:200] + ("..." if len(top_150_text) > 200 else ""),
-        f"[red]{llm_verdict_150}[/red]",
-        f"[red]{risk_150}[/red]",
-    )
-
-    # Аналіз top-1 для 500 tokens
-    top_500_text = res_500[0][0].text if res_500 else "Не знайдено"
-    has_exception_500 = "12 місяців" in top_500_text and "4.2.1" in top_500_text
-    llm_verdict_500 = "«ВІДМОВА (§4.2.1)»" if has_exception_500 else "«Схвалено»"
-    risk_500 = "Покритий ризик (100% точність)" if has_exception_500 else "Ризик"
-
-    table.add_row(
-        "2. Semantic (500 tokens)\n[dim]Збереження статей[/dim]",
-        top_500_text[:200] + ("..." if len(top_500_text) > 200 else ""),
-        f"[green]{llm_verdict_500}[/green]",
-        f"[green]{risk_500}[/green]",
-    )
-
-    console.print(table)
-    rprint(
-        Panel(
-            "[bold green]АРХІТЕКТУРНИЙ ВИСНОВОК:[/bold green] Наївний чанкінг розірвав пункт 4.2 та виняток 4.2.1 на два різні шматки.\n"
-            "Ретрівер підтягнув лише загальне правило, і модель видала помилкове схвалення позики!\n"
-            "Семантичний чанкінг зберігає нормативну ієрархію статті, захищаючи банк від видачі кредитів із порушенням правил.",
-            border_style="green",
+    outcomes: list[bool] = []
+    for name, chunks in configs:
+        pipe = HybridSearchPipeline(use_api=False)
+        pipe.index_chunks(chunks)
+        res = pipe.search_bm25(query, top_k=1)
+        top = res[0][0] if res else None
+        found = bool(top and _is_fop_exception(top))
+        outcomes.append(found)
+        text = top.text if top else "Не знайдено"
+        table.add_row(
+            name,
+            text[:200] + ("..." if len(text) > 200 else ""),
+            str(len(chunks)),
+            _ok(found, "ТАК (є 12 місяців / §4.2.1)", "НІ (правило-виняток не потрапило)"),
         )
-    )
+    console.print(table)
+
+    naive_found, sem_found = outcomes
+    if sem_found and not naive_found:
+        verdict = "Naive-чанкінг не підняв виняток у Top-1, а semantic підняв: розрив статті губить виняток."
+    elif sem_found and naive_found:
+        verdict = "Обидві стратегії знайшли виняток у Top-1 на цьому корпусі та запиті (різниці немає)."
+    elif naive_found and not sem_found:
+        verdict = "Naive знайшов виняток, semantic ні: на цьому корпусі результат протилежний очікуваному."
+    else:
+        verdict = "Жодна стратегія не підняла виняток у Top-1 для цього запиту."
+    rprint(Panel(f"[bold]Результат:[/bold] {verdict}", border_style="cyan"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ЕКСПЕРИМЕНТ 2: Дуель пошуку (Dense vs BM25 vs Hybrid RRF)
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────
+# ЕКСПЕРИМЕНТ 2: Dense vs BM25 vs Hybrid RRF
+# ──────────────────────────────────────────────
 
 
 def run_experiment_2_retrieval(corpus: dict[str, str]) -> None:
     rprint("\n" + "=" * 75)
-    rprint("[bold cyan]ЕКСПЕРИМЕНТ 2 · Дуель пошуку: Dense vs BM25 vs Hybrid RRF[/bold cyan]")
+    rprint("[bold cyan]ЕКСПЕРИМЕНТ 2 · Dense vs BM25 vs Hybrid RRF[/bold cyan]")
     rprint("=" * 75)
 
     all_chunks: list[Chunk] = []
     for doc_id, text in corpus.items():
         all_chunks.extend(semantic_chunk_document(doc_id, text, max_tokens=400))
-
     pipeline = HybridSearchPipeline(use_api=False)
     pipeline.index_chunks(all_chunks)
 
-    # Тест 2.1: Точний регуляторний запит
-    q_exact = "Постанова № 351 критерії дефолту споживчих позик"
-    rprint(f"[bold yellow]Тест 2.1 (Точний нормативний запит):[/bold yellow] «{q_exact}»")
-
-    dense_res = pipeline.search_dense(q_exact, top_k=3)
-    bm25_res = pipeline.search_bm25(q_exact, top_k=3)
-    hybrid_res = pipeline.search_hybrid(q_exact, top_k=3)
-
-    t1 = Table(title="Порівняння Top-1 результату для точного запиту", show_lines=True)
-    t1.add_column("Метод", style="bold")
-    t1.add_column("Top-1 Документ", style="cyan")
-    t1.add_column("Розділ / Стаття")
-    t1.add_column("Точність")
-
-    t1.add_row(
-        "Dense (Векторний)",
-        dense_res[0][0].doc_id,
-        dense_res[0][0].section[:30],
-        "[yellow]Посередньо (плутає схожі регламенти)[/yellow]",
-    )
-    t1.add_row(
-        "BM25 (Лексичний)",
-        bm25_res[0][0].doc_id,
-        bm25_res[0][0].section[:30],
-        "[green]Точно (ідеально збігається '351')[/green]",
-    )
-    t1.add_row(
-        "Hybrid (RRF Fusion)",
-        hybrid_res[0][0].doc_id,
-        hybrid_res[0][0].section[:30],
-        "[bold green]Ідеально (семантика + номер)[/bold green]",
-    )
-    console.print(t1)
-
-    # Тест 2.2: Розмовний парафраз без ключових слів
-    q_para = "як банк списує борги якщо позичальник потрапив у форс-мажор на війні"
-    rprint(f"\n[bold yellow]Тест 2.2 (Парафраз клієнта без точних термінів):[/bold yellow] «{q_para}»")
-
-    bm25_para = pipeline.search_bm25(q_para, top_k=3)
-    hybrid_para = pipeline.search_hybrid(q_para, top_k=3)
-
-    t2 = Table(title="Результати для розмовного парафразу", show_lines=True)
-    t2.add_column("Метод", style="bold")
-    t2.add_column("Top-1 Результат", style="cyan")
-    t2.add_column("Оцінка відповіді")
-
-    t2.add_row(
-        "BM25 (Лексичний)",
-        bm25_para[0][0].doc_id if bm25_para else "Null",
-        "[red]Слабко (немає точних слів 'війна/списання')[/red]",
-    )
-    t2.add_row(
-        "Hybrid (RRF Fusion)",
-        hybrid_para[0][0].doc_id if hybrid_para else "Null",
-        f"[green]Знайдено: {hybrid_para[0][0].section[:35]}[/green]",
-    )
-    console.print(t2)
-
-    rprint(
-        Panel(
-            "[bold green]АРХІТЕКТУРНИЙ ВИСНОВОК:[/bold green] BM25 виграє на номерах законів та ІПН, але сліпне на розмовних синонімах.\n"
-            "Вектори розуміють синоніми, але сліпнуть на номерах артикулів. Гібридний пошук (RRF) — єдиний надійний вибір для банку.",
-            border_style="green",
-        )
-    )
+    tests = [
+        ("2.1 Точний нормативний запит", "Постанова № 351 критерії дефолту споживчих позик",
+         lambda c: c.doc_id == "REG-NBU-351", "чанк із REG-NBU-351"),
+        ("2.2 Розмовний парафраз", "як банк списує борги якщо позичальник потрапив у форс-мажор на війні",
+         lambda c: "списання" in c.text.lower() or "канікул" in c.text.lower(), "чанк про списання/канікули"),
+    ]
+    for title, query, predicate, target_name in tests:
+        rprint(f"\n[bold yellow]{title}:[/bold yellow] «{query}»  [dim](ціль: {target_name})[/dim]")
+        table = Table(show_lines=True)
+        table.add_column("Метод", style="bold")
+        table.add_column("Top-1", style="cyan")
+        table.add_column("Ранг цілі в Top-3")
+        for name, fn in [("Dense (локальний енкодер)", pipeline.search_dense),
+                         ("BM25 (лексичний)", pipeline.search_bm25),
+                         ("Hybrid (RRF)", pipeline.search_hybrid)]:
+            res = fn(query, top_k=3)
+            top = f"{res[0][0].doc_id} · {res[0][0].section[:30]}" if res else "—"
+            rank = _rank_of(res, predicate)
+            table.add_row(name, top, _ok(rank == 1, f"#{rank}", _fmt_rank(rank, 3)))
+        console.print(table)
+    rprint(Panel("[dim]Колонка «Ранг цілі» обчислена з реальної видачі; висновки про переваги методів "
+                 "робіть зі своїх запитів, а не з одного прикладу.[/dim]", border_style="green"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ЕКСПЕРИМЕНТ 3: Cross-Encoder Reranker
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────
+# ЕКСПЕРИМЕНТ 3: Reranker
+# ──────────────────────────────────────────────
 
 
 def run_experiment_3_reranker(corpus: dict[str, str]) -> None:
     rprint("\n" + "=" * 75)
-    rprint("[bold cyan]ЕКСПЕРИМЕНТ 3 · Cross-Encoder Reranker Boost[/bold cyan]")
+    rprint("[bold cyan]ЕКСПЕРИМЕНТ 3 · Reranker (евристика, що імітує cross-encoder)[/bold cyan]")
     rprint("=" * 75)
-    rprint(
-        "[dim]Питання: «Які процентні ставки кредитування та матриця рішень діють за рейтингом позичальника?»\n"
-        "Цільовий документ: SOP-CREDIT-02 §3.1 (Таблиця 4-Tier: Tier A 15.9%, Tier B 18.5%, Tier C 24.0%)[/dim]\n"
-    )
+    query = "ставки кредитування та матриця рішень за рейтингом позичальника"
+    rprint(f"[dim]Запит: «{query}»\nЦіль: матриця 4-Tier (SOP-CREDIT-02, Tier A/B/C)[/dim]\n")
 
     all_chunks: list[Chunk] = []
     for doc_id, text in corpus.items():
         all_chunks.extend(semantic_chunk_document(doc_id, text, max_tokens=250))
-
     pipeline = HybridSearchPipeline(use_api=False)
     pipeline.index_chunks(all_chunks)
 
-    query = "ставки кредитування та матриця рішень за рейтингом позичальника"
+    depth = 10
+    candidates = pipeline.search_hybrid(query, top_k=depth)
+    reranked = Reranker().rerank(query, candidates, top_n=depth)
 
-    # Етап 1: Первинний швидкий пошук кандидатів (Bi-Encoder / Hybrid)
-    candidates = pipeline.search_hybrid(query, top_k=10)
-
-    # Етап 2: Глибоке переранжування через Cross-Encoder
-    reranker = Reranker()
-    reranked = reranker.rerank(query, candidates, top_n=10)
-
-    table = Table(title="Ефект Cross-Encoder: підйом цільового правила з глибини списку на Top-1", show_lines=True)
-    table.add_column("Позиція в промпті", style="bold", justify="center", width=18)
-    table.add_column("До Rerank (Bi-Encoder Hybrid)", style="white", width=34)
-    table.add_column("Після Cross-Encoder Rerank", style="cyan", width=34)
-    table.add_column("Статус для контексту LLM", width=30)
-
-    table.add_row(
-        "Ранг #1 (Top-1)",
-        f"{candidates[0][0].doc_id} (§{candidates[0][0].section[:20]})",
-        f"[bold green]{reranked[0][0].doc_id} (§{reranked[0][0].section[:20]}) 🚀[/bold green]",
-        "[bold green]ПІДЙОМ З #7 НА #1!\n(Знайдено матрицю 4-Tier)[/bold green]",
-    )
-    table.add_row(
-        "Ранг #2 (Top-2)",
-        f"{candidates[1][0].doc_id} (§{candidates[1][0].section[:20]})",
-        f"{reranked[1][0].doc_id} (§{reranked[1][0].section[:20]})",
-        "Супутній контекст",
-    )
-    table.add_row(
-        "Ранг #3 (Top-3)",
-        f"{candidates[2][0].doc_id} (§{candidates[2][0].section[:20]})",
-        f"{reranked[2][0].doc_id} (§{reranked[2][0].section[:20]})",
-        "Супутній контекст",
-    )
-    table.add_row(
-        "Ранг #4–#6",
-        "[dim]... фонові статті регламентів ...[/dim]",
-        "[dim]... відсунуто вниз списку ...[/dim]",
-        "[dim]Поза лімітом Top-3 промпту[/dim]",
-    )
-    table.add_row(
-        "Ранг #7 (Критично!)",
-        f"[bold red]{candidates[6][0].doc_id} (§{candidates[6][0].section[:20]}) ⚠️[/bold red]",
-        f"{reranked[6][0].doc_id} (§{reranked[6][0].section[:20]})",
-        "[bold red]ДО РЕРАНКУ БУЛО ТУТ!\n(LLM не побачила б матриці!)[/bold red]",
-    )
-
+    table = Table(title="Топ-5 до і після reranker", show_lines=True)
+    table.add_column("Позиція", justify="center")
+    table.add_column("До (Hybrid)")
+    table.add_column("Після (Reranker)")
+    for i in range(min(5, len(candidates))):
+        b, a = candidates[i][0], reranked[i][0]
+        mark_b = " ◄ ціль" if _is_tier_matrix(b) else ""
+        mark_a = " ◄ ціль" if _is_tier_matrix(a) else ""
+        table.add_row(f"#{i + 1}", f"{b.doc_id} · {b.section[:24]}{mark_b}", f"{a.doc_id} · {a.section[:24]}{mark_a}")
     console.print(table)
-    rprint(
-        Panel(
-            "[bold green]АРХІТЕКТУРНИЙ ВИСНОВОК:[/bold green] Якби ми передали в системний промпт лише Top-3 результати первинного пошуку,\n"
-            "модель взагалі не отримала б таблиці зі ставками і галюцинувала б довільний відсоток!\n"
-            "Cross-Encoder витягнув цільову матрицю з 7-ї позиції на 1-шу завдяки глибокому попарному зіставленню запиту та змісту правила.",
-            border_style="green",
-        )
-    )
+
+    before = _rank_of(candidates, _is_tier_matrix)
+    after = _rank_of(reranked, _is_tier_matrix)
+    if before is None:
+        msg = f"Цільова матриця не потрапила в Top-{depth} кандидатів."
+    elif after is not None and before is not None and after < before:
+        msg = f"Ранг цільового чанка: {_fmt_rank(before, depth)} → {_fmt_rank(after, depth)} (покращення)."
+    elif after == before:
+        msg = f"Ранг цільового чанка не змінився: {_fmt_rank(before, depth)}."
+    else:
+        msg = f"Ранг цільового чанка погіршився: {_fmt_rank(before, depth)} → {_fmt_rank(after, depth)}."
+    in_prompt = "потрапляє" if (after is not None and after <= 3) else "НЕ потрапляє"
+    rprint(Panel(f"[bold]Результат:[/bold] {msg}\nУ промпт (Top-3) цільова матриця {in_prompt}.", border_style="cyan"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ЕКСПЕРИМЕНТ 4: Citation & Refusal Gate (Anti-Air Canada)
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────
+# ЕКСПЕРИМЕНТ 4: Citation & Refusal Gate
+# ──────────────────────────────────────────────
+
+
+def _unsupported_numbers(query: str, chunks: list[Chunk]) -> list[str]:
+    """Числа із запиту, яких немає в жодному з знайдених фрагментів."""
+    import re
+
+    def numbers(text: str) -> set[str]:
+        # «100 000» -> «100000», щоб групи розрядів не рахувались окремими числами
+        return set(re.findall(r"\d+", re.sub(r"(?<=\d)[ \u00a0](?=\d{3}\b)", "", text)))
+
+    evidence = " ".join(c.text for c in chunks)
+    return sorted(numbers(query) - numbers(evidence))
 
 
 def run_experiment_4_refusal_gate(corpus: dict[str, str]) -> None:
     rprint("\n" + "=" * 75)
-    rprint("[bold cyan]ЕКСПЕРИМЕНТ 4 · Citation & Refusal Gate (Anti-Air Canada Trap)[/bold cyan]")
+    rprint("[bold cyan]ЕКСПЕРИМЕНТ 4 · Citation & Refusal Gate[/bold cyan]")
     rprint("=" * 75)
-    rprint(
-        "[dim]Підступне запитання: «Чи можу я отримати відстрочку платежів на 18 місяців\n"
-        "без нарахування відсотків через зміну місця роботи?» (Такої норми немає в банку!)[/dim]\n"
-    )
+    rprint("[dim]Правило гейту: відповідь дозволена, лише якщо кожне число із запиту підтверджене "
+           "знайденими фрагментами політик; інакше — відмова з переліком того, чого немає.[/dim]\n")
 
-    query = "відстрочка платежів на 18 місяців без відсотків зміна роботи"
-    pol_text = corpus.get("POL-LOAN-01", "")
+    all_chunks: list[Chunk] = []
+    for doc_id, text in corpus.items():
+        all_chunks.extend(semantic_chunk_document(doc_id, text, max_tokens=300))
+    pipeline = HybridSearchPipeline(use_api=False)
+    pipeline.index_chunks(all_chunks)
 
-    # Перевірка наявності норми
-    has_18_months = "18 місяців" in pol_text
-
-    t = Table(title="Порівняння поведінки з гейтом і без", show_lines=True)
-    t.add_column("Конфігурація", style="bold")
-    t.add_column("Відповідь моделі")
-    t.add_column("Юридичний статус для банку")
-
-    t.add_row(
-        "1. Без Citation Gate\n[dim](Наївна генерація)[/dim]",
-        "[red]«Так, банк завжди йде назустріч клієнтам і може запропонувати індивідуальні кредитні канікули до 18 місяців при наданні заяви...»[/red]",
-        "[bold red]СУДОВИЙ ПОЗОВ / ШТРАФ НБУ\n(Публічна оферта за прецедентом Air Canada)[/bold red]",
-    )
-    t.add_row(
-        "2. З Citation Gate\n[dim](Обов'язкова валідація)[/dim]",
-        "[green]{\n  \"status\": \"refused\",\n  \"reason\": \"У регламентах POL-LOAN-01 та SOP-CREDIT-02 відсутня норма про 18-місячні канікули\",\n  \"escalate_to\": \"human_underwriter\"\n}[/green]",
-        "[bold green]100% ЗАХИСТ БАНКУ\n(Детермінована відмова на невідомі умови)[/bold green]",
-    )
-    console.print(t)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ЕКСПЕРИМЕНТ 5: Підсумковий Leaderboard-бенчмарк
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def run_benchmark_dashboard() -> None:
-    rprint("\n" + "=" * 75)
-    rprint("[bold cyan]ПІДСУМКОВИЙ ЛІДЕРБОРД · RAG Optimization Ladder Benchmark[/bold cyan]")
-    rprint("=" * 75)
-
-    summary_table = Table(title="Порівняння 4 архітектур RAG у банківському домені", show_lines=True)
-    summary_table.add_column("Архітектура RAG", style="bold", width=26)
-    summary_table.add_column("Recall@3", justify="center", style="cyan")
-    summary_table.add_column("Faithfulness", justify="center", style="green")
-    summary_table.add_column("Latency (ms)", justify="center", style="yellow")
-    summary_table.add_column("Cost / 1k запитів", justify="center", style="magenta")
-    summary_table.add_column("Рекомендація банку", style="white")
-
-    summary_table.add_row(
-        "1. Naive (150t, Dense-only)",
-        "55.0%",
-        "42.0%",
-        "110 ms",
-        "$0.05",
-        "[red]Тільки для публічних FAQ[/red]",
-    )
-    summary_table.add_row(
-        "2. Semantic (500t, Dense)",
-        "72.5%",
-        "68.0%",
-        "145 ms",
-        "$0.14",
-        "[yellow]Базовий PoC[/yellow]",
-    )
-    summary_table.add_row(
-        "3. Hybrid (BM25 + Dense RRF)",
-        "88.0%",
-        "84.0%",
-        "190 ms",
-        "$0.22",
-        "[green]Стандарт для регламентів[/green]",
-    )
-    summary_table.add_row(
-        "4. Hybrid + Reranker + Gate",
-        "[bold cyan]96.5%[/bold cyan]",
-        "[bold green]99.2%[/bold green]",
-        "265 ms",
-        "$0.32",
-        "[bold green]Банківський production (Loan Copilot)[/bold green]",
-    )
-
-    console.print(summary_table)
-    rprint(
-        Panel(
-            "[bold cyan]ГОЛОВНИЙ ВИСНОВОК W2 ДЛЯ АРХІТЕКТОРА:[/bold cyan]\n"
-            "Перехід від Naive до Hybrid + Reranker коштує додаткових ~150 ms затримки та $0.27 на 1000 запитів,\n"
-            "але піднімає надійність до 99.2% і повністю усуває юридичний ризик штрафів регулятора.",
-            border_style="cyan",
-        )
-    )
+    queries = [
+        "відстрочка платежів на 18 місяців без відсотків зміна роботи",
+        "ФОП без застави понад 100 000 грн строк реєстрації 12 місяців",
+    ]
+    table = Table(title="Рішення гейту на реальній видачі (Top-3)", show_lines=True)
+    table.add_column("Запит")
+    table.add_column("Знайдені джерела (Top-3)")
+    table.add_column("Числа без підтвердження")
+    table.add_column("Рішення гейту")
+    for q in queries:
+        res = pipeline.search_hybrid(q, top_k=3)
+        chunks = [c for c, _ in res]
+        missing = _unsupported_numbers(q, chunks)
+        sources = "\n".join(f"{c.doc_id} · {c.section[:28]}" for c in chunks) or "—"
+        if missing:
+            decision = f"[bold red]ВІДМОВА[/bold red]: у знайдених нормах немає {', '.join(missing)}"
+        else:
+            decision = "[bold green]ДОЗВОЛЕНО[/bold green]: відповідь має цитуватись із джерел вище"
+        table.add_row(q, sources, ", ".join(missing) or "—", decision)
+    console.print(table)
+    rprint(Panel("[dim]Гейт тут — проста детермінована перевірка чисел; у промисловому варіанті вона "
+                 "доповнюється перевіркою цитат і порогом релевантності. Відповіді LLM у цьому "
+                 "експерименті не генеруються.[/dim]", border_style="cyan"))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="W2 RAG Optimization Ladder Lab")
     parser.add_argument("--exp", type=int, choices=[1, 2, 3, 4], help="Запустити конкретний експеримент (1-4)")
-    parser.add_argument("--benchmark", action="store_true", help="Запустити підсумковий бенчмарк")
     args = parser.parse_args()
 
     rprint(
         Panel.fit(
             "[bold white]Loan Copilot · Webinar 2 Practical Lab[/bold white]\n"
-            "[cyan]RAG Optimization Ladder · Тюнінг чанків, гібридний пошук, Reranker та Citation Gate[/cyan]",
+            "[cyan]RAG Optimization Ladder · чанки, гібридний пошук, reranker та Citation Gate[/cyan]",
             border_style="cyan",
         )
     )
@@ -406,27 +296,16 @@ def main() -> None:
         rprint("[red]Помилка: корпус регламентів порожній![/red]")
         sys.exit(1)
 
-    if args.exp == 1:
-        run_experiment_1_chunking(corpus)
-    elif args.exp == 2:
-        run_experiment_2_retrieval(corpus)
-    elif args.exp == 3:
-        run_experiment_3_reranker(corpus)
-    elif args.exp == 4:
-        run_experiment_4_refusal_gate(corpus)
-    elif args.benchmark:
-        run_benchmark_dashboard()
-    else:
-        # Повний запуск усіх експериментів послідовно
-        run_experiment_1_chunking(corpus)
-        time.sleep(0.5)
-        run_experiment_2_retrieval(corpus)
-        time.sleep(0.5)
-        run_experiment_3_reranker(corpus)
-        time.sleep(0.5)
-        run_experiment_4_refusal_gate(corpus)
-        time.sleep(0.5)
-        run_benchmark_dashboard()
+    runners = {
+        1: run_experiment_1_chunking,
+        2: run_experiment_2_retrieval,
+        3: run_experiment_3_reranker,
+        4: run_experiment_4_refusal_gate,
+    }
+    for n in ([args.exp] if args.exp else [1, 2, 3, 4]):
+        runners[n](corpus)
+        if not args.exp:
+            time.sleep(0.5)
 
 
 if __name__ == "__main__":
