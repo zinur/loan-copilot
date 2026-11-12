@@ -212,6 +212,63 @@ def run_pipeline_eval() -> EvalSuiteSummary:
     return summary
 
 
+def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, client=None) -> EvalSuiteSummary:
+    """Режим 2: усі кейси golden_qa.jsonl проходять через РЕАЛЬНИЙ CodeMie workflow; перевірки детерміновані."""
+    from module_4_production.src.workflow_client import CodeMieWorkflowClient, parse_verdict
+
+    client = client or CodeMieWorkflowClient.from_env(workflow_id)
+    dataset_path = Path(__file__).resolve().parent.parent / "data" / "golden_qa.jsonl"
+    cases = load_golden_dataset(dataset_path)[:limit]
+
+    table = Table(title="[bold white]Golden set · відповіді CodeMie workflow[/bold white]", show_lines=True)
+    for col in ("Кейс", "Очікув.", "Отримано", "Цитата", "PII/Ін'єкція", "Результат"):
+        table.add_column(col)
+
+    results: list[EvalCaseResult] = []
+    for case in cases:
+        res = client.run(case["question"])
+        answer = res["output"]
+        verdict = parse_verdict(answer) if answer else None
+        verdict_ok = verdict == case["expected_verdict"]
+        required = case.get("required_citations", [])
+        cited = all(r.split("§")[0].strip() in answer and r.split("§")[-1].strip() in answer for r in required)
+        pii = detect_pii_pan_leak(answer)
+        inj = detect_prompt_injection_success(answer)
+        ctx = [c.text for c in _retrieve_context(case["question"])]
+        faith = compute_faithfulness(answer, ctx) if answer else 0.0
+        passed = res["status"] == "Succeeded" and verdict_ok and not pii and not inj
+        results.append(EvalCaseResult(
+            case_id=case["id"], category=case["category"], question=case["question"],
+            verdict_match=verdict_ok, faithfulness=faith,
+            answer_relevance=compute_answer_relevance(case["question"], answer),
+            context_recall=1.0 if cited else 0.0, pii_leak_detected=pii, injection_succeeded=inj,
+            passed=passed, details=f"{res['status']} exec={res['execution_id']}"))
+        table.add_row(case["id"], case["expected_verdict"], str(verdict),
+                      "є" if cited else "немає", "FAIL" if (pii or inj) else "OK",
+                      "[green]PASS[/green]" if passed else "[red]FAIL[/red]")
+    console.print(table)
+
+    total = len(results)
+    n = sum(r.passed for r in results)
+    accuracy = sum(r.verdict_match for r in results) / total
+    summary = EvalSuiteSummary(
+        total_cases=total, passed_cases=n,
+        avg_faithfulness=round(sum(r.faithfulness for r in results) / total, 3),
+        avg_answer_relevance=round(sum(r.answer_relevance for r in results) / total, 3),
+        avg_context_recall=round(sum(r.context_recall for r in results) / total, 3),
+        total_pii_leaks=sum(r.pii_leak_detected for r in results),
+        total_injections_succeeded=sum(r.injection_succeeded for r in results),
+        ci_passed=(accuracy >= 0.92 and not any(r.pii_leak_detected or r.injection_succeeded for r in results)),
+    )
+    path = save_eval_run_artifact(results, summary)
+    console.print(Panel.fit(
+        f"[bold white]Quality Gate (golden set через workflow)[/bold white]\n"
+        f"Decision accuracy: [bold]{accuracy:.0%}[/bold] (поріг ≥ 92%) · кейсів PASS: {n}/{total}\n"
+        f"Gate: {'[bold green]PASS' if summary.ci_passed else '[bold red]BLOCKED'}[/]\n[dim]Артефакт: {path.name}[/dim]",
+        border_style="cyan"))
+    return summary
+
+
 def display_finops_projections():
     """Відображення таблиці FinOps-моделі на скейлі."""
     table = Table(title="[bold white]FinOps Funnel Economics · Масштабування від PoC до PB scale 14k заявок/день (модельні припущення)[/bold white]")
@@ -239,17 +296,29 @@ def display_finops_projections():
 
 
 if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="W4 eval runner")
+    ap.add_argument("--mode", choices=["fixtures", "workflow"], default="fixtures",
+                    help="fixtures: 3 відповіді QA-004 (без CodeMie); workflow: golden set через CodeMie API")
+    ap.add_argument("--workflow-id", help="ID workflow (або CODEMIE_WORKFLOW_ID)")
+    ap.add_argument("--limit", type=int, help="лише перші N кейсів golden set")
+    args = ap.parse_args()
+
     console.print(
         Panel.fit(
             "[bold white]Loan Copilot · Module 4 Production & Evaluation Suite[/bold white]\n"
-            "[cyan]RAGAS метрики, захист від витоку банківської таємниці та FinOps-модель[/cyan]",
+            f"[cyan]Режим: {args.mode}[/cyan]",
             border_style="cyan",
         )
     )
 
-    summary = run_pipeline_eval()
-    rprint()
-    display_finops_projections()
+    if args.mode == "workflow":
+        summary = run_workflow_eval(args.workflow_id, args.limit)
+    else:
+        summary = run_pipeline_eval()
+        rprint()
+        display_finops_projections()
 
     if not summary.ci_passed:
         sys.exit(1)

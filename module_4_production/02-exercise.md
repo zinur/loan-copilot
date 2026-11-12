@@ -56,6 +56,20 @@ python -m module_4_production.src.run_eval
   * Якщо номер валідний і не замаскований — функція повертає `True` (витік виявлено, дія блокується).
   * Якщо номер замасковано (`4532 **** **** 5671`) — функція повертає `False` (безпечно для відправки).
 
+### 3b. (Режим 2) Golden set через реальний CodeMie workflow
+
+Той самий раннер може прогнати всі 20 кейсів `golden_qa.jsonl` через ваш workflow (`POST /v1/workflows/{id}/executions`, потім опитування статусу та читання output останнього вузла). Порівняння детерміноване: вердикт vs `expected_verdict`, цитата, PII, ін'єкція. Gate: decision accuracy ≥ 92% і жодного PII/ін'єкції.
+
+```bash
+export CODEMIE_API_URL=https://<host>/code-assistant-api
+export CODEMIE_WORKFLOW_ID=<id>
+export CODEMIE_COOKIE='_oauth2_proxy=...'   # значення Cookie із DevTools (короткоживуче, лише демо)
+# або export CODEMIE_TOKEN=<bearer>; або CODEMIE_AUTH_URL + CODEMIE_CLIENT_ID + CODEMIE_CLIENT_SECRET
+python -m module_4_production.src.run_eval --mode workflow --limit 3   # спершу 3 кейси
+```
+
+Workflow має повертати у фінальному вузлі JSON на кшталт `{"decision": "approve|reject|hitl_escalate|refuse_injection", "answer": "... POL-LOAN-01 §3.1"}`. Без поля `decision` вердикт вгадується за ключовими словами — це ненадійно. Форма відповіді запуску й ендпоінти взято з офіційного `codemie-sdk`; на вашому стенді перевірте один кейс вручну перед повним прогоном.
+
 ### 4. Підключіть локальний трейсинг Langfuse (Опціонально)
 
 Якщо ви бажаєте переглянути візуальне дерево спанів у браузері:
@@ -66,7 +80,7 @@ docker compose -f module_4_production/docker/docker-compose.yml up -d
 # Відкриття веб-інтерфейсу в браузері:
 open http://localhost:3000
 ```
-Після повторного запуску `run_eval.py` усі трейси експортуються на дашборд.
+> ⚠️ Поточний `run_eval.py` **не експортує** трейси в Langfuse — стек піднімається лише для знайомства з UI. Читайте результати з `data/eval_runs/*.jsonl`.
 
 ### 5. Запустіть повний набір автоматичних тестів
 
