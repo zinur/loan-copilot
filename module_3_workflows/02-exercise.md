@@ -43,7 +43,7 @@ python -m module_3_workflows.src.workflow_engine demo
 ```
 У виводі знайдіть: код завершення процесу A дорівнює `-9`; процес B має інший PID, бачить ту саму паузу та продовжує. Пояснювальні питання: чому процес B не повторює `intake`/`kyc`? Що саме лежить у `checkpoints.db`?
 
-Окремі кроки (кожен — новий процес):
+Окремі кроки (кожен — новий процес; починайте з чистої бази: `rm -rf module_3_workflows/data/runtime`). Кроки 2–4 далі йдуть послідовно на одній базі:
 ```bash
 python -m module_3_workflows.src.workflow_engine start hitl --kill      # дійти до комітету і вбити себе
 python -m module_3_workflows.src.workflow_engine status hitl            # що чекає граф
@@ -51,7 +51,15 @@ python -m module_3_workflows.src.workflow_engine resume hitl approve    # люд
 ```
 Безпечний дефолт HITL: відсутність рішення ніколи не означає схвалення (у референсі немає SLA-таймера; у продакшні — hold/ескалація або decline за політикою).
 
-### 3. Saga: компенсація при скасуванні
+### 3. Ідемпотентний бар'єр (продовжує крок 2: `LC-HITL` чекає e-sign)
+
+Ключ події: `SHA256(application_id + node + event_id)`, таблиця `processed_events` з `PRIMARY KEY`. Другий захист: таблиця `disbursements` з `PRIMARY KEY (application_id)` — навіть якщо дубль прорветься, подвійна виплата неможлива.
+```bash
+for i in 1 2 3; do python -m module_3_workflows.src.workflow_engine event hitl signed --event-id dia-evt-1; done
+```
+Очікувано: рівно одна виплата, два повтори позначені як дубль.
+
+### 4. Saga: компенсація при скасуванні (друга гілка тієї самої точки e-sign)
 
 `compensation_node` виконує у зворотному порядку: `cancel_contract` (договір `voided`), потім `release_limit` (ліміт `released`) над таблицями ledger; виплата non-compensable і стоїть після підпису.
 ```bash
@@ -60,15 +68,6 @@ python -m module_3_workflows.src.workflow_engine event cancel cancelled --event-
 python -m module_3_workflows.src.workflow_engine status cancel
 ```
 Очікувано: `limit: released`, `contract: voided`, `disbursements: 0`.
-
-### 4. Ідемпотентний бар'єр
-
-Ключ події: `SHA256(application_id + node + event_id)`, таблиця `processed_events` з `PRIMARY KEY`. Другий захист: таблиця `disbursements` з `PRIMARY KEY (application_id)` — навіть якщо дубль прорветься, подвійна виплата неможлива.
-```bash
-python -m module_3_workflows.src.workflow_engine start happy
-for i in 1 2 3; do python -m module_3_workflows.src.workflow_engine event happy signed --event-id dia-1; done
-```
-Очікувано: рівно одна виплата, два повтори позначені як дубль.
 
 ### 5. Запустіть автоматичні тести
 
@@ -89,8 +88,8 @@ python -m pytest module_3_workflows/tests/ -v
 
 - [ ] `workflow_engine demo` виконано: код процесу A `-9`, процес B (інший PID) продовжив з паузи комітету.
 - [ ] Пояснено, чому після відновлення не повторюються `intake`/`kyc` (стан у `checkpoints.db`, відновлення за `thread_id`).
-- [ ] Saga: після скасування договір `voided`, ліміт `released`, виплат немає.
 - [ ] Три однакові вебхуки дали рівно одну виплату; пояснено два рівні захисту (ключ події та `PRIMARY KEY` виплати).
+- [ ] Saga: після скасування договір `voided`, ліміт `released`, виплат немає.
 - [ ] У відповіді письмово позначено, які точки паузи (docs, offer, sign), умовні HITL (OCR < 0.85, band C) та evaluator gate є у вашому графі, а які лише описані в deck.
 - [ ] Усі тести `module_3_workflows/tests/` проходять (`pytest`).
 
