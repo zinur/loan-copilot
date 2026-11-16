@@ -8,7 +8,7 @@
 
 1. **[01-durable-workflows-lab.md](./01-durable-workflows-lab.md)** · **Лабораторний практикум із Workflows:** покроковий розбір 4 експериментів (Happy Path FSM, пауза в сірій зоні та відновлення за `thread_id`, Saga-відкат та ідемпотентний бар'єр).
 2. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W3:** побудова спрощеного LangGraph FSM (10 вузлів у референсі; канонічний 12-вузловий workflow з deck реалізовано в `codemie_demo/`), асинхронний HITL, відновлення після збоїв та Saga-компенсація.
-3. **[src/workflow_engine.py](./src/workflow_engine.py)** · **Референсний конвеєр на LangGraph:** скінченний автомат зі станом, що фіксується чекпоінтером (`MemorySaver` у демо), умовним HITL-гейтом та відкатами Saga. Це навчальне спрощення, див. розділ «Відмінності від 12-вузлового workflow».
+3. **[src/workflow_engine.py](./src/workflow_engine.py)** · **Референсний конвеєр на LangGraph:** скінченний автомат зі станом, що фіксується SQLite-чекпоінтером, паузи через `interrupt()`, умовним HITL-гейтом та відкатами Saga. Це навчальне спрощення, див. розділ «Відмінності від 12-вузлового workflow».
 4. **[tests/test_durable_workflow.py](./tests/test_durable_workflow.py)** · **Автоматичні тести надійності:** верифікація Happy Path, перевірка зупинки та відновлення в сірій зоні Tier C, перевірка дедуплікації вебхуків та сага-компенсації.
 5. **[Інтерактивна презентація (deck.html)](../deck.html)** · слайди «W3 Agenda», «W3 Theory», «State machine ≠ loop», «State Engines», «Workflow engine + AI rules», «Resilience & Saga», «W3 Use-case», «W3 · Where pauses?», «Human oversight design», «EU AI Act» зі спікер-нотатками.
 
@@ -24,14 +24,14 @@ Python-референс `src/workflow_engine.py` навмисно спрощен
 |---|---|---|
 | Вузли | 12 (+ compensation) | 10: `intake`, `eligibility`, `kyc`, `credit_history`, `underwriter`, `hitl_committee`, `contract`, `sign_awaiting`, `disburse`, `compensation` |
 | Wait-вузли `docs_requested`, `offer`; `analyst_review`; `verify_before_send` | є | немає |
-| Retry / timeout / DLQ | є (YAML `retry_policy`) | немає (мок-логіка) |
-| Ключ ідемпотентності | `SHA256(application_id + node + event_id)` | `sha256(application_id:event_id)[:16]` (без `node`; `event_id` захардкоджено) |
-| Порядок Saga | `cancel_contract`, потім `release_limit` | одним вузлом `compensation`: `limit_reserved=False`, `contract_voided` |
-| Пауза HITL | durable wait (`interrupt_before`, стан у Postgres) | граф завершується в `hitl_committee`; повторний `app.invoke(patch, config)` на тому ж `thread_id` **перезапускає граф від `intake`** зі злитим станом (видно в консолі: вузли до `underwriter` виконуються двічі). Справжнє продовження з точки зупинки потребує `interrupt()` / `interrupt_before` |
-| Safe default HITL | немає відповіді в SLA → hold/ескалація (або decline за політикою), **ніколи auto-approve** | SLA/таймаутів немає; без `human_decision` статус лишається `awaiting_hitl` (авто-схвалення немає) |
+| Retry / timeout / DLQ | є (YAML `retry_policy`) | немає |
+| Ключ ідемпотентності | `SHA256(application_id + node + event_id)` | так само, таблиця `processed_events` у SQLite (`PRIMARY KEY`), плюс `PRIMARY KEY` на виплаті |
+| Порядок Saga | `cancel_contract`, потім `release_limit` | так само: `cancel_contract` (договір `voided`), `release_limit` (ліміт `released`) над ledger |
+| Пауза HITL | durable wait (`interrupt_before`, стан у Postgres) | `interrupt()` + `Command(resume=...)`, чекпоінт у SQLite; після `kill -9` новий процес продовжує з вузла паузи |
+| Safe default HITL | немає відповіді в SLA → hold/ескалація (або decline за політикою), **ніколи auto-approve** | немає SLA-таймера; без рішення граф просто чекає, auto-approve немає |
 | Payout | non-compensable, після всіх перевірок | `disburse` після `sign_awaiting` |
 
-Ці розбіжності задокументовано, поведінку коду не змінено.
+Чекпоінт, пауза, ключ ідемпотентності й Saga в Python-референсі справжні; стаб — лише «ядро банку» (SQLite-таблиці) і скоринг.
 
 ---
 
@@ -127,14 +127,14 @@ EU AI Act (як орієнтир для українського банку) т�
   Якщо клієнт у період роздумів натискає кнопку «Скасувати заявку» або закінчується 7-денний строк дії оферу — запускається вузол **`compensation_node`**:
   * Компенсації виконуються у зворотному порядку до прямих дій: спершу `cancel_contract` (анулює чернетку договору в системі електронного документообігу), потім `release_limit` (знімає резерв кредитного ліміту в картковій системі).
   * Виплата (`disburse`) non-compensable, тому стоїть після всіх перевірок і підпису.
-  * У Python-референсі обидві дії згорнуто в один вузол `compensation` (див. розділ «Відмінності від 12-вузлового workflow»).
+  * У Python-референсі обидві дії виконує вузол `compensation` у цьому порядку над таблицями ledger (SQLite-стаб ядра банку).
 
 ### Захист від повторних списань (Webhook Idempotency Barrier):
-Зовнішні сервіси цифрового підпису в разі мережевих затримок можуть повторити вебхук. Канонічний ключ: `SHA256(application_id + node + event_id)`; повтор вебхука призводить рівно до однієї виплати. У Python-референсі бар'єр спрощено (без `node` у ключі):
+Зовнішні сервіси цифрового підпису в разі мережевих затримок можуть повторити вебхук. Канонічний ключ: `SHA256(application_id + node + event_id)`; повтор вебхука призводить рівно до однієї виплати. У Python-референсі це реальна таблиця `processed_events` (`PRIMARY KEY` на ключі), а виплата додатково захищена `PRIMARY KEY (application_id)`:
 ```python
-key = hashlib.sha256(f"{application_id}:{event_id}".encode()).hexdigest()[:16]
-if key in state["processed_events"]:
-    return {"current_node": "sign_awaiting"}  # Дубль проігноровано, повертаємо 200 OK
+key = event_key(application_id, "sign_awaiting", event_id)  # SHA256(application_id + node + event_id)
+if not ledger.claim_event(key):      # INSERT OR IGNORE → False для дубля
+    return {"sign_outcome": "duplicate"}   # граф лишається в очікуванні
 ```
 
 ---
@@ -167,7 +167,7 @@ if key in state["processed_events"]:
 cd loan-copilot
 
 # Запуск демонстрації 3 сценаріїв конвеєра:
-.venv/bin/python -m module_3_workflows.src.workflow_engine
+.venv/bin/python -m module_3_workflows.src.workflow_engine demo
 
 # Запуск автоматизованих тестів надійності:
 .venv/bin/python -m pytest module_3_workflows/tests/

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   langfuse-db:
     image: postgres:16-alpine
@@ -19,7 +17,7 @@ services:
       retries: 5
 
   langfuse-server:
-    image: langfuse/langfuse:3
+    image: langfuse/langfuse:2   # v3 вимагає ClickHouse+Redis+S3; v2 працює лише з Postgres
     container_name: langfuse-server
     depends_on:
       langfuse-db:

@@ -39,4 +39,31 @@ def test_client_runs_with_mocked_http(monkeypatch):
 
     monkeypatch.setenv("CODEMIE_TOKEN", "t")
     c = CodeMieWorkflowClient("http://h", "wf", session=S(), poll_interval=0)
-    assert c.run("q")["output"] == '{"decision":"approve"}'
+    assert c.run("q")["output"] == '{"decision": "approve"}'
+
+
+def test_local_backend_runs_golden_set_with_fake_llm(monkeypatch, tmp_path):
+    """Режим local: LLM підмінено — перевіряємо, що весь контур (пошук → JSON → гейт) працює без CodeMie."""
+    import json
+    from types import SimpleNamespace
+
+    from module_4_production.src.local_backend import LocalPolicyBackend
+
+    def fake_chat(messages, temperature=0.0):
+        return SimpleNamespace(content='```json\n{"decision": "reject", "answer": "POL-LOAN-01 §2.1", "citations": []}\n```', provider="fake")
+
+    out = LocalPolicyBackend(chat=fake_chat).run("Мені 19 років, чи можу взяти кредит?")
+    assert out["status"] == "Succeeded" and json.loads(out["output"])["decision"] == "reject"
+
+    monkeypatch.setattr(run_eval, "save_eval_run_artifact", lambda r, s: tmp_path / "x.jsonl")
+    s = run_eval.run_workflow_eval(client=LocalPolicyBackend(chat=fake_chat), limit=20)
+    assert s.total_cases == 20 and s.ci_passed is False  # «reject» збігається лише з частиною кейсів
+
+
+def test_local_backend_survives_llm_failure():
+    from module_4_production.src.local_backend import LocalPolicyBackend
+
+    def boom(*a, **k):
+        raise RuntimeError("no key")
+
+    assert LocalPolicyBackend(chat=boom).run("q")["status"] == "Failed"

@@ -4,11 +4,11 @@
 
 У цій практичній роботі ви перейдете від суб'єктивного тестування («поспілкувалися в чаті й начебто все працює») до **промислового інженерного контролю якості, наскрізної спостережуваності та юніт-економіки**:
 
-1. Запустити автоматизовану оцінку кредитного копілота на базі **20 еталонних кейсів Golden Set** (`data/golden_qa.jsonl`).
+1. Запустити автоматизовану оцінку: три відповіді на QA-004 (код) і **20 кейсів Golden Set** (`data/golden_qa.jsonl`) через реальний CodeMie workflow.
 2. Розрахувати математичні метрики **RAGAS (Faithfulness, Answer Relevance, Context Recall; RAGAS = підмножина для RAG-шару, повний набір — 7 родин метрик)** та налаштувати автоматичний **Quality Gate** для блокування релізу в CI/CD.
 3. Дослідити та усунути **упередження моделі-судді (LLM-as-a-Judge Biases)** на реальному кейсі розбіжності оцінок (Verbosity Bias).
 4. Протестувати роботу детермінованих фільтрів банківської таємниці (алгоритм Луна для номерів карток) та захист від **Indirect Prompt Injection**.
-5. Підняти локальний стек **Langfuse у Docker**, експортувати живі трейси сесій та проаналізувати **FinOps-модель на PB-scale 14 000 заявок/день consumer loans**.
+5. Підняти локальний стек **Langfuse v2 у Docker**, переглянути трейси й оцінки прогону та проаналізувати **FinOps-модель на PB-scale 14 000 заявок/день consumer loans**.
 
 ---
 
@@ -21,11 +21,14 @@ cd loan-copilot
 # 1. Оцінка трьох відповідей на QA-004 (реальний пошук контексту) та FinOps-проєкції:
 .venv/bin/python -m module_4_production.src.run_eval
 
-# 2. (Опціонально) Підняття локального стеку Langfuse + Postgres:
+# 2. Golden set через локальний Python-бекенд (потрібен LLM-ключ; Langfuse — крок 3) — деталі в 02-exercise.md:
+.venv/bin/python -m module_4_production.src.run_eval --mode local --limit 3
+
+# 3. (Опціонально) Підняття локального стеку Langfuse v2 + Postgres:
 docker compose -f module_4_production/docker/docker-compose.yml up -d
 # Після цього відкрийте в браузері: http://localhost:3000
 
-# 3. Запуск усіх автоматичних юніт-тестів модуля:
+# 4. Запуск усіх автоматичних юніт-тестів модуля:
 .venv/bin/python -m pytest module_4_production/tests/
 ```
 
@@ -44,8 +47,11 @@ docker compose -f module_4_production/docker/docker-compose.yml up -d
 
 * **Запуск у консолі:**
   ```bash
-  .venv/bin/python -m module_4_production.src.run_eval
+  .venv/bin/python -m module_4_production.src.run_eval                      # режим 1: три відповіді QA-004
+  .venv/bin/python -m module_4_production.src.run_eval --mode local --limit 3     # режим 2: golden set через локальний бекенд + Langfuse
+  .venv/bin/python -m module_4_production.src.run_eval --mode workflow --limit 3  # режим 3: через CodeMie (демо)
   ```
+  Режими 2–3 порівнюють вердикт з `expected_verdict`, перевіряє цитату, PII та ін'єкцію; Gate: точність ≥ 92% (19/20).
 
 * **Що аналізує архітектор у виведенні:**
   * **Знайдений контекст:** реальний пошук (BM25 + Dense) по політикам, Top-4 фрагменти.
@@ -125,7 +131,7 @@ docker compose -f module_4_production/docker/docker-compose.yml up -d
      docker compose -f module_4_production/docker/docker-compose.yml up -d
      ```
   2. Відкрийте браузер за посиланням `http://localhost:3000`.
-  3. Перегляньте дерево спанів заявки (`application_id` = correlation-id; в демо — трейс `lc-2026-9a4f`): ви побачите точну латентність кожного кроку (`node.intake` $\rightarrow$ 180ms, `tool.bureau` $\rightarrow$ 820ms) та кількість витрачених токенів.
+  3. Задайте `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` (Settings → API Keys) і `pip install 'langfuse<3'`, запустіть `run_eval`. Відкрийте Tracing → Traces (`golden/QA-xxx`: питання, відповідь, оцінки на вкладці Scores) і Sessions (сесія = назва запуску). Це трейси eval-раннера, а не внутрішніх кроків workflow.
 
 ---
 

@@ -1,121 +1,101 @@
-"""Unit-тести для перевірки надійності, HITL, Saga-відкатів та ідемпотентності."""
+"""Тести durable workflow: реальний SQLite-чекпоінтер, interrupt/resume, ідемпотентність, Saga, kill -9."""
 
 from __future__ import annotations
 
-import pytest
-from langgraph.checkpoint.memory import MemorySaver
+import subprocess
+import sys
+from pathlib import Path
+
+from langgraph.types import Command
 
 from module_3_workflows.src.workflow_engine import (
-    LoanWorkflowState,
-    build_loan_workflow,
+    deliver_event,
+    new_application,
+    open_runtime,
+    pending_interrupt,
+    thread_config,
 )
 
-
-def _get_base_state(app_id: str = "LC-TEST-001") -> LoanWorkflowState:
-    return {
-        "application_id": app_id,
-        "applicant_name": "Тестовий Позичальник",
-        "tax_id": "1234567890",
-        "amount": 100000.0,
-        "term_months": 24,
-        "monthly_income": 30000.0,
-        "consent_id": "consent-uuid-valid-1234",
-        "is_fop": False,
-        "fop_months": 24,
-        "status": "in_progress",
-        "current_node": "init",
-        "eligibility_passed": None,
-        "kyc_passed": None,
-        "credit_score": None,
-        "monthly_payment": None,
-        "pti": None,
-        "tier": None,
-        "rate_apr": None,
-        "hitl_required": False,
-        "human_decision": None,
-        "human_comment": None,
-        "contract_id": None,
-        "limit_reserved": False,
-        "signed": False,
-        "client_cancelled": False,
-        "processed_events": [],
-        "compensation_executed": False,
-        "citations": [],
-        "audit_trail": [],
-    }
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_happy_path_workflow():
-    """Тест 1: Успішне проходження повного конвеєра до фінальної виплати."""
-    app = build_loan_workflow(checkpointer=MemorySaver())
-    state = _get_base_state("LC-HAPPY-TEST")
-    cfg = {"configurable": {"thread_id": "thread-test-happy"}}
+def _start(db: Path, scenario_tax_id: str, app_id: str, thread: str):
+    app, ledger, saver = open_runtime(db)
+    app.invoke(new_application(app_id, tax_id=scenario_tax_id), config=thread_config(thread))
+    return app, ledger
 
-    res = app.invoke(state, config=cfg)
 
+def test_happy_path_waits_for_sign_then_disburses(tmp_path):
+    """Tier A: без людини, але чекає e-sign (interrupt); після події — одна виплата."""
+    app, ledger = _start(tmp_path, "1234567890", "LC-T1", "t1")
+    assert pending_interrupt(app, "t1")["type"] == "await_sign_event"
+    assert ledger.snapshot("LC-T1") == {"limit": "reserved", "contract": "active", "disbursements": 0}
+
+    res = deliver_event(app, ledger, "LC-T1", "t1", {"type": "signed", "event_id": "e1"})
     assert res["status"] == "disbursed"
-    assert res["eligibility_passed"] is True
-    assert res["kyc_passed"] is True
-    assert res["credit_score"] == 720
-    assert res["limit_reserved"] is True
-    assert res["signed"] is True
-    assert res["contract_id"] is not None
+    assert ledger.snapshot("LC-T1")["disbursements"] == 1
 
 
-def test_hitl_pause_and_resume():
-    """Тест 2: HITL-зупинка в сірій зоні Tier C та успішне відновлення за thread_id."""
-    checkpointer = MemorySaver()
-    app = build_loan_workflow(checkpointer=checkpointer)
+def test_hitl_pause_survives_process_restart(tmp_path):
+    """Tier C зупиняється на комітеті; НОВИЙ граф+чекпоінтер на тому ж файлі продовжує з місця паузи."""
+    app, _ = _start(tmp_path, "9876543210", "LC-T2", "t2")
+    assert pending_interrupt(app, "t2")["type"] == "committee_review"
 
-    state = _get_base_state("LC-HITL-TEST")
-    state["tax_id"] = "9876543210"  # скор 580 -> сіра зона Tier C!
-    cfg = {"configurable": {"thread_id": "thread-test-hitl"}}
+    app2, ledger2, _ = open_runtime(tmp_path)  # «новий процес»: нові об'єкти, той самий диск
+    assert pending_interrupt(app2, "t2")["type"] == "committee_review"
+    app2.invoke(Command(resume={"decision": "approve", "comment": "депозит"}), config=thread_config("t2"))
 
-    # Первинний запуск повинен зупинитися на HITL-вузлі
-    res_paused = app.invoke(state, config=cfg)
-    assert res_paused["status"] == "awaiting_hitl"
-    assert res_paused["hitl_required"] is True
-    assert res_paused["current_node"] == "hitl_committee"
-
-    # Людина підтверджує через інтерфейс перевизначення (Human Override)
-    res_resumed = app.invoke(
-        {"human_decision": "approve", "human_comment": "Погоджено під депозит"},
-        config=cfg,
-    )
-    assert res_resumed["status"] == "disbursed"
-    assert res_resumed["hitl_required"] is False
-    assert "human_override_approved" in res_resumed["audit_trail"]
+    assert pending_interrupt(app2, "t2")["type"] == "await_sign_event"
+    values = app2.get_state(thread_config("t2")).values
+    assert values["human_decision"] == "approve"
+    assert any("human_override_approved" in a for a in values["audit_trail"])
+    assert ledger2.snapshot("LC-T2")["contract"] == "active"
 
 
-def test_saga_compensating_action():
-    """Тест 3: Saga Pattern — відкат ліміту та анулювання договору при скасуванні."""
-    app = build_loan_workflow(checkpointer=MemorySaver())
-    state = _get_base_state("LC-SAGA-TEST")
-    state["client_cancelled"] = True  # Клієнт відмовився після генерації договору
-    cfg = {"configurable": {"thread_id": "thread-test-saga"}}
-
-    res = app.invoke(state, config=cfg)
-
-    assert res["status"] == "cancelled"
-    assert res["limit_reserved"] is False  # Ліміт обов'язково має бути звільнено!
-    assert res["compensation_executed"] is True
-    assert "limit_released_rollback" in res["audit_trail"]
-    assert "contract_voided" in res["audit_trail"]
+def test_hitl_decline_stops_without_side_effects(tmp_path):
+    app, ledger = _start(tmp_path, "9876543210", "LC-T3", "t3")
+    res = app.invoke(Command(resume={"decision": "decline"}), config=thread_config("t3"))
+    assert res["status"] == "declined"
+    assert ledger.snapshot("LC-T3") == {"limit": None, "contract": None, "disbursements": 0}
 
 
-def test_webhook_idempotency_barrier():
-    """Тест 4: Ідемпотентний бар'єр запобігає повторній обробці однакових подій підпису."""
-    from module_3_workflows.src.workflow_engine import sign_awaiting_node
+def test_saga_compensation_on_cancel(tmp_path):
+    """Скасування після резерву: договір voided, ліміт released, виплати немає."""
+    app, ledger = _start(tmp_path, "1234567890", "LC-T4", "t4")
+    res = deliver_event(app, ledger, "LC-T4", "t4", {"type": "cancelled", "event_id": "c1"})
+    assert res["status"] == "cancelled" and res["compensation_executed"] is True
+    assert ledger.snapshot("LC-T4") == {"limit": "released", "contract": "voided", "disbursements": 0}
 
-    state = _get_base_state("LC-IDEM-TEST")
-    # Перший виклик
-    out1 = sign_awaiting_node(state)
-    assert out1.get("signed") is True
-    first_key = out1["processed_events"][0]
 
-    # Другий виклик із тим самим ключем (дублікат від Дія.Підпис)
-    state["processed_events"] = [first_key]
-    out2 = sign_awaiting_node(state)
-    # Повторний виклик не повинен змінювати стан або повторно підписувати
-    assert "signed" not in out2
-    assert out2["current_node"] == "sign_awaiting"
+def test_duplicate_webhook_is_idempotent(tmp_path):
+    """Три однакові вебхуки (кожен через новий граф) — рівно одна виплата."""
+    app, ledger = _start(tmp_path, "1234567890", "LC-T5", "t5")
+    event = {"type": "signed", "event_id": "dup-1"}
+    deliver_event(app, ledger, "LC-T5", "t5", event)
+    for _ in range(2):
+        app_n, ledger_n, _ = open_runtime(tmp_path)
+        out = deliver_event(app_n, ledger_n, "LC-T5", "t5", event)
+        assert out == {"duplicate": True}
+    assert ledger.snapshot("LC-T5")["disbursements"] == 1
+
+
+def test_disburse_is_idempotent_even_without_ingress_check(tmp_path):
+    """Другий захист: PRIMARY KEY у таблиці виплат не дозволить подвійну виплату."""
+    _, ledger = _start(tmp_path, "1234567890", "LC-T6", "t6")
+    assert ledger.disburse("LC-T6", 100.0) is True
+    assert ledger.disburse("LC-T6", 100.0) is False
+
+
+def test_real_sigkill_between_processes(tmp_path):
+    """Справжній kill -9: процес A помирає після чекпоінта, процес B (окремий PID) відновлює стан."""
+    base = [sys.executable, "-m", "module_3_workflows.src.workflow_engine"]
+    a = subprocess.run([*base, "start", "hitl", "--kill", "--db", str(tmp_path)], cwd=ROOT, capture_output=True)
+    assert a.returncode == -9  # SIGKILL
+
+    app, ledger, _ = open_runtime(tmp_path)
+    assert pending_interrupt(app, "thread-hitl")["type"] == "committee_review"
+
+    b = subprocess.run([*base, "resume", "hitl", "approve", "--db", str(tmp_path)], cwd=ROOT, capture_output=True)
+    assert b.returncode == 0
+    app2, _, _ = open_runtime(tmp_path)
+    assert pending_interrupt(app2, "thread-hitl")["type"] == "await_sign_event"

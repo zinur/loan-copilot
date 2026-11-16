@@ -9,11 +9,11 @@
 ## Матеріали та практичні кроки (Steps)
 
 1. **[01-eval-and-observability-lab.md](./01-eval-and-observability-lab.md)** · **Лабораторний практикум із Eval & Observability:** покроковий розбір 4 експериментів (батч-оцінка 20 кейсів, викриття Verbosity Bias судді, детекція витоку карток за формулою Луна, FinOps та Langfuse).
-2. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** оцінка трьох відповідей на QA-004 проти реально знайденого контексту, перевірка Quality Gate (інтеграція в CI/CD — поза скоупом воркшопу) та Langfuse-трейсинг.
-3. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** збалансована вибірка за категоріями (Eligibility, Risk, KYC, Adversarial attacks).
+2. **[02-exercise.md](./02-exercise.md)** · **Практичне завдання W4:** три режими раннера: (1) три відповіді на QA-004; (2) **local** — golden set із 20 кейсів через локальний Python-бекенд (`src/local_backend.py`), Dataset і трейси з оцінками в Langfuse (домашнє, без CodeMie); (3) workflow — той самий golden set через CodeMie API (демо на занятті). CI/CD — поза скоупом.
+3. **[data/golden_qa.jsonl](./data/golden_qa.jsonl)** · **Банківський Golden Evaluation Set (20 еталонних кейсів):** вердикти й цитати звірені з реальним корпусом політик (`module_2_grounding/data/policies`); 9 з 20 питань навмисно поза корпусом — очікувана поведінка `hitl_escalate`.
 4. **[src/eval_metrics.py](./src/eval_metrics.py)** · **Математичні метрики RAGAS & Guardrails:** алгоритми розрахунку Faithfulness, Answer Relevance, Context Recall, верифікація карток за алгоритмом Луна та виявлення спроб Prompt Injection.
 5. **[src/cost_model.py](./src/cost_model.py)** · **FinOps-модель воронки витрат (довідково, до теорії W4; у практичне завдання не входить):** розрахунок full-case cost (~$0.47) та incremental AI cost (~$0.01) на PB scale 14 000 заявок/день (consumer loans) з урахуванням Prompt Caching (усі числа — модельні припущення).
-6. **[src/run_eval.py](./src/run_eval.py)** · **Runner оцінювання (придатний для CI/CD; інтеграція поза скоупом):** реальний пошук контексту (модуль W2), три позначені відповіді на QA-004, метрики Faithfulness / PII / ін'єкція, рішення Quality Gate (код виходу 1 при BLOCKED).
+6. **[src/run_eval.py](./src/run_eval.py)** · **Runner оцінювання (придатний для CI/CD; інтеграція поза скоупом):** режим `fixtures` (за замовчуванням): реальний пошук контексту (W2), три позначені відповіді на QA-004, Quality Gate; режим `--mode workflow`: golden set через CodeMie workflow (`src/workflow_client.py`, `codemie_demo/policy_qa_workflow.yaml`), експорт трейсів і оцінок у Langfuse (`src/langfuse_export.py`). Код виходу 1 при BLOCKED.
 7. **[tests/test_eval_pipeline.py](./tests/test_eval_pipeline.py)** · **Автоматичні юніт-тести:** 6 тестів для перевірки метрик, виявлення PII, персистенції ранів та FinOps-розрахунків.
 8. **[Інтерактивна презентація (deck.html)](../deck.html)** · Слайди «W4 Agenda», «W4 Theory», «Metric families», «Eval Architecture», «GenAI Observability», «FinOps & Economics», «Adversarial Security», «AI-specific hardening», «W4 Use-case», «CI/CD Eval & Langfuse», «Prompt & agent governance» із детальним архітектурним розбором.
 
@@ -133,8 +133,14 @@ cd loan-copilot
 # 1. Запуск тестового раннера з виведенням Rich-таблиць:
 .venv/bin/python -m module_4_production.src.run_eval
 
-# 2. Запуск усіх автоматизованих юніт-тестів проекту (M2, M3, M4):
+# 2. Домашнє: golden set через локальний Python-бекенд + Langfuse (потрібні LLM-ключ у .env і LANGFUSE_*; див. 02-exercise.md):
+.venv/bin/python -m module_4_production.src.run_eval --mode local --limit 3
+
+# 3. Демо: golden set через реальний CodeMie workflow (потрібні CODEMIE_API_URL, CODEMIE_WORKFLOW_ID та CODEMIE_COOKIE або CODEMIE_TOKEN; див. 02-exercise.md):
+.venv/bin/python -m module_4_production.src.run_eval --mode workflow --limit 3
+
+# 4. Запуск усіх автоматизованих юніт-тестів проекту (M2, M3, M4):
 .venv/bin/python -m pytest
 ```
 
-Усі автоматичні тести проєкту мають проходити зеленим (у модулі M4 — 6 тестів). Це підтверджує лише роботу метрик і FinOps-моделі на демо-даних; не є сертифікацією чи гарантією відповідності вимогам НБУ або EU AI Act (для банку це орієнтир, не пряма норма).
+Усі автоматичні тести проєкту мають проходити зеленим (у модулі M4 — 11 тестів). Це підтверджує лише роботу метрик і FinOps-моделі на демо-даних; не є сертифікацією чи гарантією відповідності вимогам НБУ або EU AI Act (для банку це орієнтир, не пряма норма).

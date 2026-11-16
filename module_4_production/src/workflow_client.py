@@ -113,10 +113,28 @@ class CodeMieWorkflowClient:
             s = self.http.get(self._url(f"/{exec_id}/states"), headers=self._headers(),
                               params={"page": 0, "per_page": 50}, timeout=30)
             s.raise_for_status()
-            states = sorted(s.json(), key=lambda x: x.get("completed_at") or "")
-            if states:
-                o = self.http.get(self._url(f"/{exec_id}/states/{states[-1]['id']}/output"),
+            body = s.json()
+            if isinstance(body, dict):  # стенд може обгортати список: {"data": [...]} тощо
+                body = next((body[k] for k in ("data", "items", "states", "results") if isinstance(body.get(k), list)), None)
+            if not isinstance(body, list):
+                raise RuntimeError(f"Незнайома форма відповіді /states: {s.text[:500]}")
+            states = sorted((x for x in body if isinstance(x, dict)), key=lambda x: x.get("completed_at") or "")
+            wanted = os.environ.get("CODEMIE_RESULT_STATE", "policy-answer")
+            # Останній вузол часто — автоматичний «Conversation Summary». Беремо вузол з відповіддю:
+            # спершу за назвою, далі — перший з кінця, чий output містить JSON із полем decision.
+            ordered = sorted(states, key=lambda x: (wanted not in (x.get("name"), x.get("id"))))[:1] + states[::-1]
+            for st in ordered:
+                o = self.http.get(self._url(f"/{exec_id}/states/{st['id']}/output"),
                                   headers=self._headers(), timeout=30)
                 o.raise_for_status()
-                output = o.json().get("output") or ""
+                text = o.json().get("output") or ""
+                if re.search(r'"decision"\s*:', text):
+                    output = text
+                    break
+                output = output or text
+            try:  # декодуємо \uXXXX: читабельний вивід і коректні метрики на справжньому тексті
+                output = json.dumps(json.loads(output), ensure_ascii=False)
+            except ValueError:
+                pass
+            # якщо вузла з decision нема — output лишається першим непорожнім; parse_verdict тоді ненадійний
         return {"status": status, "output": output, "execution_id": exec_id}

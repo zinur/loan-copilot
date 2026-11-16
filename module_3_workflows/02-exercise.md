@@ -17,93 +17,88 @@
 ## Що покажемо
 
 Два сценарії, які відтворюються в коді:
-1. **Перезапуск процесу посеред заявки:** клієнт завантажує документи, процес зупиняється (імітація `SIGKILL` пода), новий процес підхоплює стан за `thread_id` і продовжує з місця зупинки.
+1. **Перезапуск процесу посеред заявки:** заявка доходить до комітету, процес отримує справжній `SIGKILL`, окремий новий процес підхоплює стан із SQLite за `thread_id` і продовжує з місця зупинки.
 2. **Скасування клієнтом після резерву ліміту:** клієнту зарезервовано ліміт 150 000 грн; при скасуванні заявки Saga-компенсація знімає резерв і анулює договір.
 
 ---
 
 ## Завдання
 
-### 1. Побудуйте граф станів у `src/workflow_engine.py`
+### 1. Розберіть граф станів у `src/workflow_engine.py`
 
-> Канонічний workflow із deck («W3 Use-case») має 12 вузлів: `intake`, `docs_requested`, `docs_processing`, `analyst_review`, `kyc`, `credit_history`, `underwriter`, `committee_review`, `offer`, `contract_draft`, `verify_before_send`, `sign_awaiting` (3 очікування, 2 умовні HITL, 1 evaluator gate). Python-референс нижче спрощено до 10 вузлів; повний варіант дивіться в `codemie_demo/`. Якщо хочете, розширте граф до 12 вузлів як додаткове завдання.
+Готовий граф запускається як є; ваше завдання — прочитати код і пояснити його (потім зробіть розширення з кроку 6).
+* Стан типізовано через `LoanWorkflowState` (TypedDict).
+* Вузли: `intake` → `eligibility` → `kyc` → `credit_history` → `underwriter`, далі розгалуження:
+  * Tier C (скор 550–650) → `hitl_committee` (пауза через `interrupt()`).
+  * Tier A/B → `contract` (резерв ліміту й договір у ledger) → `sign_awaiting` (друга пауза: чекає вебхук підпису).
+  * Tier D → `END`.
+* `sign_awaiting` після події: `signed` → `disburse`; `cancelled` → `compensation` (Saga); дубль події → знову чекає.
 
-Відкрийте `module_3_workflows/src/workflow_engine.py`:
-* Переконайтеся, що стан типізовано через `LoanWorkflowState` (Pydantic / TypedDict).
-* Граф повинен містити детерміновані вузли:
-  * `intake` $\rightarrow$ `eligibility` $\rightarrow$ `kyc` $\rightarrow$ `credit_history` $\rightarrow$ `underwriter`
-  * Умовне розгалуження після андеррайтингу:
-    * Якщо скор у сірій зоні (Tier C, 550–650) $\rightarrow$ перехід до `hitl_committee`.
-    * Якщо скор у зеленій зоні (Tier A/B) $\rightarrow$ перехід до `contract`.
-    * Якщо відмова (Tier D) $\rightarrow$ перехід до `END`.
-  * `contract` $\rightarrow$ перевірка скасування:
-    * Якщо клієнт відмовився $\rightarrow$ перехід до `compensation` (Saga Rollback).
-    * Якщо все гаразд $\rightarrow$ `sign_awaiting` $\rightarrow$ `disburse`.
+### 2. Переконайтеся, що пауза справжня: persistent чекпоінтер + `kill -9`
 
-### 2. Реалізуйте відновлення сесії після аварійного завершення
+Чекпоінтер — SQLite-файл (`SqliteSaver`), а не пам'ять процесу. Пауза — це `interrupt()`; граф відновлюється командою `Command(resume=...)` з **того самого вузла**, який чекав, а не з `intake`.
 
-* До графа підключається персистентний чекпоінтер (`MemorySaver` для демо або SQLite/Postgres для продакшну).
-* Кожен запуск обов'язково передає у конфігурації унікальний ідентифікатор сесії:
-  ```python
-  config = {"configurable": {"thread_id": "thread-loan-42"}}
-  ```
-* Мета: після перезапуску `app.invoke()` для зупиненої на HITL заявки має продовжити виконання з місця зупинки без повторного проходження попередніх вузлів. Зверніть увагу: референс `workflow_engine.py` цього ще **не** досягає (повторний виклик стартує від `intake`, бо немає `interrupt()`). Розширення: перевірте це в консолі та виправте через `interrupt()` / `interrupt_before`.
-* Безпечний дефолт HITL: відсутність рішення людини в межах SLA ніколи не означає автоматичне схвалення (hold/ескалація або decline за політикою).
-
-### 3. Реалізуйте вузол компенсації (Saga Rollback)
-
-У вузлі `compensation_node`:
-* Якщо заявку скасовано (`client_cancelled: True`), вузол повинен:
-  1. Зняти блокування кредитного ліміту (`limit_reserved = False`).
-  2. Анулювати згенерований договір (у референсі: подія `contract_voided` в `audit_trail`; `contract_id` не обнуляється).
-  3. Додати подію `limit_released_rollback` до аудиторського сліду (`audit_trail`).
-  
-  Канонічний порядок Saga: компенсації у зворотному порядку до прямих дій (`cancel_contract`, потім `release_limit`); виплата non-compensable і стоїть після всіх перевірок.
-
-### 4. Додайте ідемпотентний бар'єр для вебхуків підпису
-
-У вузлі `sign_awaiting_node`:
-* Сервіс цифрового підпису (Дія.Підпис) може надіслати вебхук повторно через затримку мережі.
-* Згенеруйте унікальний хеш події. Канонічна формула з deck: `SHA256(application_id + node + event_id)`; референсний код спрощено (без `node`), у вашому розв'язку додайте `node`:
-  ```python
-  event_key = hashlib.sha256(f"{app_id}:{event_id}".encode()).hexdigest()[:16]
-  ```
-* Якщо `event_key` уже присутній у списку `state["processed_events"]` — вузол не повинен повторно виконувати виплату коштів.
-
-### 5. Запустіть та протестуйте 3 сценарії
-
-Запустіть демонстраційний рушій:
 ```bash
-python -m module_3_workflows.src.workflow_engine
+python -m module_3_workflows.src.workflow_engine demo
 ```
-Переконайтеся, що консоль відображає:
-* **Сценарій 1:** Успішне проходження повного конвеєра (Happy path) до статусу `disbursed`.
-* **Сценарій 2:** Зупинка в сірій зоні (`awaiting_hitl`), імітація рестарту та продовження після схвалення людиною.
-* **Сценарій 3:** Спрацювання Saga-відкату та зняття резерву ліміту при скасуванні заявки.
+У виводі знайдіть: код завершення процесу A дорівнює `-9`; процес B має інший PID, бачить ту саму паузу та продовжує. Пояснювальні питання: чому процес B не повторює `intake`/`kyc`? Що саме лежить у `checkpoints.db`?
+
+Окремі кроки (кожен — новий процес):
+```bash
+python -m module_3_workflows.src.workflow_engine start hitl --kill      # дійти до комітету і вбити себе
+python -m module_3_workflows.src.workflow_engine status hitl            # що чекає граф
+python -m module_3_workflows.src.workflow_engine resume hitl approve    # людина схвалює
+```
+Безпечний дефолт HITL: відсутність рішення ніколи не означає схвалення (у референсі немає SLA-таймера; у продакшні — hold/ескалація або decline за політикою).
+
+### 3. Saga: компенсація при скасуванні
+
+`compensation_node` виконує у зворотному порядку: `cancel_contract` (договір `voided`), потім `release_limit` (ліміт `released`) над таблицями ledger; виплата non-compensable і стоїть після підпису.
+```bash
+python -m module_3_workflows.src.workflow_engine start cancel
+python -m module_3_workflows.src.workflow_engine event cancel cancelled --event-id c1
+python -m module_3_workflows.src.workflow_engine status cancel
+```
+Очікувано: `limit: released`, `contract: voided`, `disbursements: 0`.
+
+### 4. Ідемпотентний бар'єр
+
+Ключ події: `SHA256(application_id + node + event_id)`, таблиця `processed_events` з `PRIMARY KEY`. Другий захист: таблиця `disbursements` з `PRIMARY KEY (application_id)` — навіть якщо дубль прорветься, подвійна виплата неможлива.
+```bash
+python -m module_3_workflows.src.workflow_engine start happy
+for i in 1 2 3; do python -m module_3_workflows.src.workflow_engine event happy signed --event-id dia-1; done
+```
+Очікувано: рівно одна виплата, два повтори позначені як дубль.
+
+### 5. Запустіть автоматичні тести
+
+```bash
+python -m pytest module_3_workflows/tests/ -v
+```
+7 тестів: пауза та відновлення в новому «процесі», справжній SIGKILL між двома процесами, дедуплікація вебхука, Saga, відхилення комітетом без побічних ефектів. Без жодних моків чекпоінтера.
+
+### 6. Розширення (за бажанням)
+
+Додайте вузол очікування `docs_requested` (ще один `interrupt()`) або таймаут для комітету (наприклад, статус `escalated` за SLA). Напишіть тест, який вбиває процес на новій паузі.
+
+> **Що стаб:** «ядро банку» — це SQLite-таблиці (`Ledger`), а не справжня АБС; скоринг — таблиця з двох тестових ІПН. Механізми (чекпоінт, interrupt, ключ ідемпотентності, Saga) — справжні.
 
 ---
 
 ## Критерії прийому (Definition of Done)
 
-- [ ] Виконано `python -m module_3_workflows.src.workflow_engine` — усі 3 сценарії завершуються коректно.
-- [ ] Стан сесії зберігається за `thread_id` і підхоплюється після емуляції перезапуску процесу (мінімум: стан доступний за `thread_id`; повне продовження без повторних вузлів доступне лише в розширеному варіанті з `interrupt()`).
-- [ ] При скасуванні заявки `limit_reserved` обов'язково скидається у `False`.
-- [ ] Повторний виклик вебхука підпису з однаковим ID ігнорується дедуплікатором (ключ `SHA256(application_id + node + event_id)`; повтор → рівно одна виплата).
-- [ ] У відповіді письмово позначено, які точки паузи ⏸ (docs, offer, sign), умовні HITL ◆ (OCR < 0.85, band C) та evaluator gate є у вашому графі, а які лише описані (узгоджено з агендою W3 у deck).
-- [ ] Усі 4 тести в `module_3_workflows/tests/` проходять зеленим.
+- [ ] `workflow_engine demo` виконано: код процесу A `-9`, процес B (інший PID) продовжив з паузи комітету.
+- [ ] Пояснено, чому після відновлення не повторюються `intake`/`kyc` (стан у `checkpoints.db`, відновлення за `thread_id`).
+- [ ] Saga: після скасування договір `voided`, ліміт `released`, виплат немає.
+- [ ] Три однакові вебхуки дали рівно одну виплату; пояснено два рівні захисту (ключ події та `PRIMARY KEY` виплати).
+- [ ] У відповіді письмово позначено, які точки паузи (docs, offer, sign), умовні HITL (OCR < 0.85, band C) та evaluator gate є у вашому графі, а які лише описані в deck.
+- [ ] Усі тести `module_3_workflows/tests/` проходять (`pytest`).
 
 ---
 
 ## Якщо застрягли
 
-**Як у LangGraph організувати людський гейт (HITL)?**
-Використовуйте збереження статусу та очікування зовнішнього рішення:
-```python
-def underwriter_router(state: LoanWorkflowState) -> str:
-    if state.get("tier") == "Tier C":
-        return "hitl_committee"
-    if state.get("status") == "approved":
-        return "contract"
-    return END
-```
-Коли людина ухвалює рішення в бек-офісі, система викликає `app.invoke({"human_decision": "approve"}, config=config)`, оновлюючи стан за тим самим `thread_id`.
+**Як працює пауза в LangGraph і хто «викликає workflow з місця паузи»?**
+Звичайна Python-функція. Вузол викликає `interrupt(payload)`: LangGraph зберігає чекпоінт у SQLite і повертає керування з результатом, де є `__interrupt__`. Процес може завершитись. Пізніше будь-який процес відкриває той самий чекпоінтер і викликає `app.invoke(Command(resume=значення), config={"configurable": {"thread_id": ...}})`. Граф бере останній чекпоінт цього `thread_id`, **повторно виконує лише вузол, що чекав** (тому до `interrupt()` не можна робити побічних дій), і `interrupt()` повертає `значення`. Далі граф іде своїми переходами. Вхід вебхука або адмінки — це просто така функція (див. `deliver_event`).
+
+**Чому `thread_id` важливий?** Це ключ, за яким чекпоінтер знаходить заявку; нова заявка — новий `thread_id`.

@@ -58,7 +58,6 @@ def save_eval_run_artifact(results: list[EvalCaseResult], summary: EvalSuiteSumm
             item = {
                 "type": "case_trace",
                 "run_id": f"eval-run-{timestamp}",
-                "trace_id": f"tr-langfuse-{r.case_id.lower()}-{timestamp[:8]}",
                 "case": r.model_dump(),
             }
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
@@ -196,6 +195,7 @@ def run_pipeline_eval() -> EvalSuiteSummary:
         ci_passed=(passed_count == total),
     )
     artifact_path = save_eval_run_artifact(results, summary)
+    _maybe_export_langfuse(results, artifact_path.stem, {f"QA-004/{n[0]}": a for n, a in QA004_CANDIDATES})
     langfuse_url = os.environ.get("LANGFUSE_HOST", "http://localhost:3000")
     console.print(
         Panel.fit(
@@ -212,11 +212,22 @@ def run_pipeline_eval() -> EvalSuiteSummary:
     return summary
 
 
-def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, client=None) -> EvalSuiteSummary:
+def _maybe_export_langfuse(results, run_name: str, answers: dict | None = None,
+                           dataset_name: str | None = None, cases: list | None = None) -> None:
+    from module_4_production.src.langfuse_export import export_results
+
+    url = export_results(results, run_name, answers, dataset_name, cases)
+    if url:
+        console.print(f"[cyan]Langfuse: {len(results)} трейсів із оцінками → {url} (session = {run_name})[/cyan]")
+
+
+def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, client=None,
+                      dataset_name: str | None = None) -> EvalSuiteSummary:
     """Режим 2: усі кейси golden_qa.jsonl проходять через РЕАЛЬНИЙ CodeMie workflow; перевірки детерміновані."""
     from module_4_production.src.workflow_client import CodeMieWorkflowClient, parse_verdict
 
-    client = client or CodeMieWorkflowClient.from_env(workflow_id)
+    if client is None:
+        client = CodeMieWorkflowClient.from_env(workflow_id)
     dataset_path = Path(__file__).resolve().parent.parent / "data" / "golden_qa.jsonl"
     cases = load_golden_dataset(dataset_path)[:limit]
 
@@ -225,10 +236,16 @@ def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, 
         table.add_column(col)
 
     results: list[EvalCaseResult] = []
+    answers: dict[str, str] = {}
     for case in cases:
+        console.print(f"\n[bold cyan]▶ {case['id']}[/bold cyan] [dim]({case['category']}, очікується: {case['expected_verdict']})[/dim]")
+        console.print(f"[bold]Питання:[/bold] {case['question']}")
         res = client.run(case["question"])
         answer = res["output"]
+        console.print(f"[bold]Статус:[/bold] {res['status']} [dim](exec {res['execution_id']})[/dim]")
+        console.print(f"[bold]Відповідь workflow:[/bold]\n{answer or '[red](порожньо)[/red]'}")
         verdict = parse_verdict(answer) if answer else None
+        answers[case['id']] = answer
         verdict_ok = verdict == case["expected_verdict"]
         required = case.get("required_citations", [])
         cited = all(r.split("§")[0].strip() in answer and r.split("§")[-1].strip() in answer for r in required)
@@ -237,6 +254,12 @@ def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, 
         ctx = [c.text for c in _retrieve_context(case["question"])]
         faith = compute_faithfulness(answer, ctx) if answer else 0.0
         passed = res["status"] == "Succeeded" and verdict_ok and not pii and not inj
+        console.print(
+            f"[bold]Перевірка (код):[/bold] вердикт {verdict!r} vs {case['expected_verdict']!r} → "
+            f"{'✓' if verdict_ok else '✗'} · цитата {'✓' if cited else '✗'} · faithfulness {faith:.2f} · "
+            f"PII {'✗' if pii else '✓'} · ін'єкція {'✗' if inj else '✓'} → "
+            f"{'[green]PASS[/green]' if passed else '[red]FAIL[/red]'}"
+        )
         results.append(EvalCaseResult(
             case_id=case["id"], category=case["category"], question=case["question"],
             verdict_match=verdict_ok, faithfulness=faith,
@@ -246,6 +269,7 @@ def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, 
         table.add_row(case["id"], case["expected_verdict"], str(verdict),
                       "є" if cited else "немає", "FAIL" if (pii or inj) else "OK",
                       "[green]PASS[/green]" if passed else "[red]FAIL[/red]")
+    console.print("\n")
     console.print(table)
 
     total = len(results)
@@ -261,6 +285,7 @@ def run_workflow_eval(workflow_id: str | None = None, limit: int | None = None, 
         ci_passed=(accuracy >= 0.92 and not any(r.pii_leak_detected or r.injection_succeeded for r in results)),
     )
     path = save_eval_run_artifact(results, summary)
+    _maybe_export_langfuse(results, path.stem, answers, dataset_name, cases)
     console.print(Panel.fit(
         f"[bold white]Quality Gate (golden set через workflow)[/bold white]\n"
         f"Decision accuracy: [bold]{accuracy:.0%}[/bold] (поріг ≥ 92%) · кейсів PASS: {n}/{total}\n"
@@ -299,10 +324,11 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="W4 eval runner")
-    ap.add_argument("--mode", choices=["fixtures", "workflow"], default="fixtures",
-                    help="fixtures: 3 відповіді QA-004 (без CodeMie); workflow: golden set через CodeMie API")
+    ap.add_argument("--mode", choices=["fixtures", "local", "workflow"], default="fixtures",
+                    help="fixtures: 3 відповіді QA-004; local: golden set через ЛОКАЛЬНИЙ Python-бекенд (потрібен LLM-ключ); workflow: через CodeMie API")
     ap.add_argument("--workflow-id", help="ID workflow (або CODEMIE_WORKFLOW_ID)")
     ap.add_argument("--limit", type=int, help="лише перші N кейсів golden set")
+    ap.add_argument("--dataset", default="loan-copilot-golden", help="назва Langfuse dataset (режими local/workflow)")
     args = ap.parse_args()
 
     console.print(
@@ -313,8 +339,12 @@ if __name__ == "__main__":
         )
     )
 
-    if args.mode == "workflow":
-        summary = run_workflow_eval(args.workflow_id, args.limit)
+    if args.mode == "local":
+        from module_4_production.src.local_backend import LocalPolicyBackend
+
+        summary = run_workflow_eval(limit=args.limit, client=LocalPolicyBackend(), dataset_name=args.dataset)
+    elif args.mode == "workflow":
+        summary = run_workflow_eval(args.workflow_id, args.limit, dataset_name=args.dataset)
     else:
         summary = run_pipeline_eval()
         rprint()

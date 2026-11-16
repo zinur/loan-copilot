@@ -1,5 +1,7 @@
 # CodeMie live demo · W4 — Eval + Observability + FinOps
 
+> **Для live-демо W4 використовується `policy_qa_workflow.yaml`** (один вузол, структурована відповідь `decision`) разом із `run_eval --mode workflow`; порядок — у `demo_script.md`. Файли `eval_workflow.yaml.alt-*` нижче — довідкова альтернатива (eval як окремий workflow на платформі, не запускається в демо).
+
 Готові артефакти для live-демо на W4 вебінарі: автоматизований Golden
 Set eval, LLM-as-Judge з debiasing, RAGAS metrics, CI gate decision,
 FinOps dashboard.

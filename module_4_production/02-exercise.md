@@ -1,8 +1,9 @@
 # 02 · Exercise · ваша W4 **домашня** лаба — Оцінювання якості (RAGAS) та Langfuse
 
-> ⏱ **~90–120 хв · самостійно після вебінару** · на занятті показуємо eval runner + Langfuse у CodeMie
+> ⏱ **~90–120 хв · самостійно після вебінару** · на занятті показали: код (A/B/C) → golden set через CodeMie workflow → Langfuse; вдома робите те саме локально
+> ✅ Усе виконується **локально**, без CodeMie: Python-бекенд із репозиторію + Langfuse у docker. Потрібні: docker і ключ будь-якого LLM-провайдера.
 > 🤖 **Vibe-code OK** · головне — зрозуміти **чому** кожен метрик обрано, а не як саме реалізовано
-> 🐳 Крок 5 (Langfuse docker) — **опціонально**: якщо docker працює — підключайте, якщо ні — читайте eval_runs JSONL напряму. Не блокуйте себе на infrastructure problems.
+> 🐳 Якщо docker не піднімається — кроки 1–3 і 6 не залежать від нього; результат запусків читайте в `data/eval_runs/*.jsonl`.
 
 ## Learning objective
 
@@ -10,7 +11,7 @@
 1. Оцінити три відповіді на QA-004 проти реально знайденого контексту; Golden Set (**20 еталонних кейсів**) вивчаємо як набір даних.
 2. Розрахувати математичні метрики **RAGAS (Faithfulness, Answer Relevance, Context Recall)** — це підмножина для RAG-шару; повний набір — 7 родин метрик.
 3. Перевірити суворий **Quality Gate**: runner повертає PASS або BLOCKED за порогами (код виходу 1 при провалі) у разі регресії якості чи витоку банківської таємниці. Інтеграція в CI/CD-пайплайн — поза скоупом воркшопу.
-4. Зберегти персистентний артефакт рану для аудиту та налаштувати трейсинг у **Langfuse**.
+4. Зберегти персистентний артефакт рану для аудиту; прогнати golden set через локальний Python-бекенд і побачити Dataset, трейси та оцінки в **Langfuse**.
 
 ---
 
@@ -27,8 +28,8 @@
 ### 1. Дослідіть Golden Set (`data/golden_qa.jsonl`)
 
 Відкрийте файл `module_4_production/data/golden_qa.jsonl`:
-* Перевірте структуру 20 еталонних кейсів:
-  * 10 кейсів Eligibility (стандартні умови, стаж ФОП, валютні обмеження).
+* Перевірте структуру 20 еталонних кейсів (поля `expected_verdict` і `required_citations` звірені з `module_2_grounding/data/policies`; питання поза корпусом мають вердикт `hitl_escalate`: агент не повинен вигадувати пункт):
+  * 10 кейсів Eligibility (стандартні умови, стаж ФОП, валютні обмеження); частина питань навмисно поза корпусом політик.
   * 5 кейсів Risk (грейди Tier A–D, перевищення ліміту боргового навантаження PTI > 50%).
   * 3 кейси KYC (санкції РНБО, статус PEP, прострочені документи).
   * 2 провокативні кейси Adversarial (спроби непрямої ін'єкції та випитування ваг скорингу).
@@ -56,38 +57,48 @@ python -m module_4_production.src.run_eval
   * Якщо номер валідний і не замаскований — функція повертає `True` (витік виявлено, дія блокується).
   * Якщо номер замасковано (`4532 **** **** 5671`) — функція повертає `False` (безпечно для відправки).
 
-### 3b. (Режим 2) Golden set через реальний CodeMie workflow
-
-Той самий раннер може прогнати всі 20 кейсів `golden_qa.jsonl` через ваш workflow (`POST /v1/workflows/{id}/executions`, потім опитування статусу та читання output останнього вузла). Порівняння детерміноване: вердикт vs `expected_verdict`, цитата, PII, ін'єкція. Gate: decision accuracy ≥ 92% і жодного PII/ін'єкції.
+### 4. Підніміть Langfuse локально і створіть ключі
 
 ```bash
-export CODEMIE_API_URL=https://<host>/code-assistant-api
-export CODEMIE_WORKFLOW_ID=<id>
-export CODEMIE_COOKIE='_oauth2_proxy=...'   # значення Cookie із DevTools (короткоживуче, лише демо)
-# або export CODEMIE_TOKEN=<bearer>; або CODEMIE_AUTH_URL + CODEMIE_CLIENT_ID + CODEMIE_CLIENT_SECRET
-python -m module_4_production.src.run_eval --mode workflow --limit 3   # спершу 3 кейси
+docker compose -f module_4_production/docker/docker-compose.yml up -d   # Langfuse v2 + Postgres
+open http://localhost:3000                                                # Sign up → створіть org і проєкт
 ```
+У проєкті: Settings → API Keys → Create. Додайте в `.env` (файл у `.gitignore`, не комітьте):
 
-Workflow має повертати у фінальному вузлі JSON на кшталт `{"decision": "approve|reject|hitl_escalate|refuse_injection", "answer": "... POL-LOAN-01 §3.1"}`. Без поля `decision` вердикт вгадується за ключовими словами — це ненадійно. Форма відповіді запуску й ендпоінти взято з офіційного `codemie-sdk`; на вашому стенді перевірте один кейс вручну перед повним прогоном.
-
-### 4. Підключіть локальний трейсинг Langfuse (Опціонально)
-
-Якщо ви бажаєте переглянути візуальне дерево спанів у браузері:
 ```bash
-# Підняття локального стеку Langfuse
-docker compose -f module_4_production/docker/docker-compose.yml up -d
-
-# Відкриття веб-інтерфейсу в браузері:
-open http://localhost:3000
+LANGFUSE_HOST=http://localhost:3000
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+# + ключ LLM-провайдера для кроку 5: DIAL_API_KEY+DIAL_API_URL, або OPENAI_API_KEY, або ANTHROPIC_API_KEY
 ```
-> ⚠️ Поточний `run_eval.py` **не експортує** трейси в Langfuse — стек піднімається лише для знайомства з UI. Читайте результати з `data/eval_runs/*.jsonl`.
+```bash
+pip install 'langfuse<3'      # сервер у docker-compose — v2; SDK v3 несумісний
+```
 
-### 5. Запустіть повний набір автоматичних тестів
+### 5. Прожени golden set через ваш локальний Python-бекенд → результат у Langfuse
+
+Бекенд `src/local_backend.py`: пошук по політиках (модуль W2) + LLM через `common/llm_gateway.py`, відповідь у JSON `{decision, answer, citations}`. Раннер:
+1. завантажує 20 кейсів `golden_qa.jsonl` у Langfuse як **Dataset** `loan-copilot-golden` (вхід, очікуваний вердикт, цитати);
+2. проганяє кожне питання через бекенд;
+3. перевіряє детерміновано: вердикт vs `expected_verdict`, цитата, PII, ін'єкція;
+4. шле в Langfuse трейс `golden/QA-xxx` з оцінками (Scores), прив'язаний до елемента Dataset, і зберігає JSONL-артефакт.
+
+```bash
+python -m module_4_production.src.run_eval --mode local --limit 3    # спершу 3 кейси
+python -m module_4_production.src.run_eval --mode local              # усі 20; Gate: точність вердикту ≥ 92%
+```
+У Langfuse перевірте: **Datasets → loan-copilot-golden** (20 елементів і запуск `run_…`), **Tracing → Traces** (`golden/QA-xxx`, вкладка Scores), **Sessions**.
+
+* **Подумайте:** які кейси не пройшли і чому — агент помилився чи розмітка (golden set) неточна? Для питань поза корпусом правильна відповідь — `hitl_escalate`.
+* **Спробуйте самі:** змініть системний промпт у `local_backend.py`, запустіть ще раз і порівняйте два запуски в Datasets.
+* Метрика `faithfulness` тут — індикатор (рахується проти локально знайденого контексту), а Gate визначають вердикт, PII та ін'єкція.
+
+### 6. Запустіть повний набір автоматичних тестів
 
 ```bash
 .venv/bin/python -m pytest
 ```
-Усі 20 тестів проєкту (M2 + M3 + M4; потрібен `pip install -r requirements.txt`, зокрема langgraph) мають пройти зеленим за менш ніж 1 секунду.
+Усі тести проєкту (M2 + M3 + M4; потрібен `pip install -r requirements.txt`) мають пройти зеленим (зараз 25). У тестах LLM підмінений, тож вони не потребують ключів і Langfuse.
 
 ---
 
@@ -96,7 +107,9 @@ open http://localhost:3000
 - [ ] Виконано `python -m module_4_production.src.run_eval`: відповідь A має `PASS`, відповіді B і C мають `BLOCKED`.
 - [ ] Пояснено, чому B заблоковано за відсутністю цитати (а не лише за низькою Faithfulness) і чому C заблоковано через галюцинацію.
 - [ ] У каталозі `module_4_production/data/eval_runs/` з'явився JSONL-файл рану з 4 рядків (1 summary + 3 трейси).
-- [ ] Усі 20 автоматичних тестів проєкту проходять без помилок (`pytest`).
+- [ ] Langfuse піднято, ключі в `.env`; у Datasets є `loan-copilot-golden` (20 елементів).
+- [ ] `run_eval --mode local` виконано: у Langfuse видно запуск, трейси `golden/QA-xxx` зі Scores; можете пояснити 2–3 кейси, що не пройшли.
+- [ ] Усі автоматичні тести проєкту проходять без помилок (`pytest`).
 
 ---
 
