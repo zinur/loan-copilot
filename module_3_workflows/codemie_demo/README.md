@@ -28,6 +28,12 @@ flow у durable Sequential workflow, що виживає `kill -9` K8s, чека
 | [`demo_payloads.md`](./demo_payloads.md) | 4 scenarios: happy+survive k9, idempotent replay, Saga rollback, pre-write fail |
 | [`demo_script.md`](./demo_script.md) | 15-хв сценарій живого показу |
 
+## Що перевірено, а що ні
+
+Перевірено за публічною документацією CodeMie (docs.codemie.ai): `interrupt_before`, `retry_policy`, `output_schema`, `condition`/`switch` (змінні беруться з виходу самого вузла, `default` обов'язковий), `recursion_limit`, `max_concurrency`, `enable_summarization_node`, `POST /v1/workflows/{id}/executions`. Обидва YAML розібрані скриптом: усі переходи ведуть в існуючі вузли, а умови читають лише поля свого вузла.
+
+Не знайдено в публічній документації, перевірте на стенді до демо: ендпоінти `PUT /output` та `PUT /resume`, реєстр webhook-ів в Admin, `max_wait_duration`, поведінка після `kill` пода (чекпоінтер у Postgres), tools `check_idempotency` і `disburse`. `interrupt_before` у документації це пауза до підтвердження користувача (Continue/Cancel), а не таймер. Якщо щось не підтвердиться, надійний показ ідемпотентності та `kill -9` лишається на Python-референсі.
+
 ## 12-node FSM map (+ compensation)
 
 ```

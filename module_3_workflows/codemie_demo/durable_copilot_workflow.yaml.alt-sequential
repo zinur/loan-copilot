@@ -228,7 +228,7 @@ states:
   - id: underwriter-state
     assistant_id: underwriter
     task: |
-      Розрахунок PMT, PTI, policy band за SOP-CREDIT-02 §5.
+      Розрахунок PMT, PTI, policy band за SOP-CREDIT-02 §2 (PMT/PTI) і §3 (4-Tier матриця).
     output_schema: |
       {
         "type": "object",

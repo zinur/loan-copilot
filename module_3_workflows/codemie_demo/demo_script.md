@@ -132,12 +132,11 @@ curl -X POST .../resume \
   -d '{"disbursed": true, "disburse_id": "DISB-001", "event_key": "sha256-abc"}'
 ```
 
-→ **CodeMie повертає 409 Conflict** (execution already completed).
+→ Execution уже завершений, тому повторний resume нічого не виконує (точну відповідь API звірте на стенді до демо).
 → **Другого disburse не було.**
 
 **Що говориш:**
-> "Два рівні захисту: (1) CodeMie execution state не дозволяє resume
-> завершеного workflow. (2) У production ще й tool-level: Python wrapper
+> "Два рівні захисту: (1) завершений execution не можна відновити вдруге. (2) У production ще й tool-level: Python wrapper
 > `disburse` перевіряє composite key у БД перед money movement.
 >
 > 150 000 UAH виплачені рівно один раз (ключ ідемпотентності = SHA256(application_id + node + event_id)).

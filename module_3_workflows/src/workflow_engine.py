@@ -435,6 +435,21 @@ def _cli_status(args: argparse.Namespace) -> None:
     app, ledger, _ = open_runtime(args.db)
     thread = f"thread-{args.scenario}"
     snap = app.get_state(thread_config(thread))
+    # Історія чекпоінтів: від першого до останнього за часом (get_state_history віддає нові першими)
+    history = sorted(app.get_state_history(thread_config(thread)), key=lambda s: s.created_at or "")
+    table = Table(title=f"Історія статусів {args.scenario} (від ранніх до останнього)")
+    for col in ("Час (UTC)", "Крок", "Вузол виконано", "Статус", "Далі"):
+        table.add_column(col)
+    for i, s in enumerate(history):
+        if s.metadata.get("step", 0) < 0:
+            continue  # службовий чекпоінт з вхідними даними
+        last = i == len(history) - 1
+        mark = "[bold green]" if last else ""
+        ts = (s.created_at or "")[11:23]
+        table.add_row(f"{mark}{ts}", f"{mark}{s.metadata.get('step')}", f"{mark}{s.values.get('current_node') or '-'}",
+                      f"{mark}{s.values.get('status') or '-'}{' ◀ зараз' if last else ''}",
+                      f"{mark}{', '.join(s.next) or 'кінець'}")
+    console.print(table)
     rprint({"next": snap.next, "status": snap.values.get("status"), "waiting_for": pending_interrupt(app, thread),
             "ledger": ledger.snapshot(f"LC-{args.scenario.upper()}")})
 

@@ -36,7 +36,7 @@
    - Tolerance: 0 UAH.
 3. **Term match:** `contract_term_from_text == intake_term_months`
 4. **Borrower identity:** `contract_borrower_tax_id_from_text == intake_tax_id`
-5. **PTI sanity:** `underwriter_pti <= 0.50` (regulatory ceiling з SOP-CREDIT-02 §5.4)
+5. **PTI sanity:** `underwriter_pti <= 0.50` (regulatory ceiling з SOP-CREDIT-02 §3, матриця Tier C/D)
 
 ## Decision rules
 

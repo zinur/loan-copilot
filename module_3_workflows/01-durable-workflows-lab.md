@@ -47,6 +47,13 @@ python -m module_3_workflows.src.workflow_engine start hitl --kill
 
 * **Очікуєте у виводі:** п'ять рядків `▶ …` (вузли), `⏸ committee: … (interrupt)`, `pid=… чекпоінт збережено, граф чекає: {'type': 'committee_review', …}` і рядок про `kill -9`. Термінал повертається без помилки Python: процес просто зник.
 * **Висновок:** стан заявки не залежить від пам'яті процесу, він лежить у `module_3_workflows/data/runtime/checkpoints.db`.
+* **Перевірка історії** (нова команда, процес мертвий, а історія є):
+
+```bash
+python -m module_3_workflows.src.workflow_engine status hitl
+```
+
+  Таблиця «Історія статусів» має 6 рядків: `init → intake → eligibility → kyc → credit_history → underwriter`; останній рядок `awaiting_hitl ◀ зараз`, далі `hitl_committee`.
 
 **Як це збудовано** (`workflow_engine.py`): чекпоінтер лежить у файлі, граф компілюється разом із ним, а `thread_id` ідентифікує заявку.
 
@@ -102,7 +109,7 @@ python -m module_3_workflows.src.workflow_engine resume hitl approve --comment "
 ```
 
   Очікуєте: інший `pid`, той самий payload паузи, далі `▶ contract: Договір і резерв ліміту 150,000.00 грн` і друга пауза `⏸ sign_awaiting`. Рядків `intake`, `kyc` чи запиту до бюро **немає**: вони не повторюються.
-* **Перевірка:** `status hitl` → `ledger: {'limit': 'reserved', 'contract': 'active', 'disbursements': 0}`, `waiting_for: {'type': 'await_sign_event', …}`.
+* **Перевірка:** `status hitl` → до таблиці додалися два рядки: `hitl_committee · approved` і `contract · approved ◀ зараз` (далі `sign_awaiting`). Ledger: `{'limit': 'reserved', 'contract': 'active', 'disbursements': 0}`, `waiting_for: {'type': 'await_sign_event', …}`. Перші 6 рядків не змінилися: це доказ, що `intake`/`kyc` не виконувались вдруге.
 * **Безпечний дефолт:** відсутність рішення ніколи не означає схвалення; рішення `decline` завершує процес без побічних ефектів (ledger порожній).
 
 **Як це збудовано.** Вузол комітету викликає `interrupt()`, а значення, яке він поверне, прийде з `Command(resume=...)`:
@@ -147,6 +154,7 @@ python -m module_3_workflows.src.workflow_engine event hitl signed --event-id di
 ```
 
 * **Очікуєте:** перший виклик: `✔ disburse: ВИПЛАТУ виконано: 150,000.00 грн`, `Ledger: {'limit': 'reserved', 'contract': 'active', 'disbursements': 1}`. Другий і третій: `○ webhook dia-evt-1: дубль, ігноруємо (ключ …)` і `disbursements` усе ще **1**.
+* **Перевірка історії:** `status hitl` → після першого вебхука додалися рядки `sign_awaiting` і `disburse · disbursed ◀ зараз`. Другий і третій вебхуки **не додали жодного рядка**: граф навіть не відновлювався.
 * **Захист рівня 1 (вхід):** `deliver_event` рахує ключ `SHA256(application_id + node + event_id)` і дивиться в `processed_events`; дубль відсікається ще до відновлення графа.
 * **Захист рівня 2 (вузол):** `sign_awaiting` робить `INSERT OR IGNORE` ключа; якщо ключ уже є, повертає `duplicate` і лишається в очікуванні.
 * **Захист рівня 3 (дія):** таблиця `disbursements` має `PRIMARY KEY (application_id)`: навіть повторне виконання `disburse` не створить другої виплати.
@@ -204,7 +212,7 @@ python -m module_3_workflows.src.workflow_engine event cancel cancelled --event-
 python -m module_3_workflows.src.workflow_engine status cancel
 ```
 
-* **Очікуєте:** після `start`: ліміт `reserved`, договір `active`, граф чекає e-sign. Після події `cancelled`: `↺ saga: Компенсація: cancel_contract → release_limit` і `limit: released, contract: voided, disbursements: 0` (тест `test_saga_compensation_on_cancel`).
+* **Очікуєте:** після `start`: ліміт `reserved`, договір `active`, граф чекає e-sign. Після події `cancelled`: `↺ saga: Компенсація: cancel_contract → release_limit` і `limit: released, contract: voided, disbursements: 0` (тест `test_saga_compensation_on_cancel`). В історії `status cancel` останні рядки: `sign_awaiting`, `compensation · cancelled ◀ зараз`, далі кінець.
 * **Компенсація (зворотний порядок):** `cancel_contract`, потім `release_limit`. Виплата non-compensable і стоїть після підпису; до підпису її не було, тому відкочувати нічого зайвого.
 * **Підсумок усієї лаби:** `LC-HITL` (виплата 1, ліміт `reserved`) і `LC-CANCEL` (виплат 0, ліміт `released`) в одній базі — два шляхи від однієї точки очікування.
 
